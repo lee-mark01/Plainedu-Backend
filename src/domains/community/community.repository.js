@@ -11,4 +11,10 @@ const save = async (user_id, post_type, stock_code, opinion, title, content) => 
     return result.insertId;
 };
 
-module.exports = { save };
+const findById = async (id) => {
+  const [rows] = await pool.query('SELECT * FROM CommunityPosts WHERE id = ?', [id]);
+  return rows[0];
+};
+
+
+module.exports = { save, findById };

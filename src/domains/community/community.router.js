@@ -6,5 +6,6 @@ const { createPostSchema } = require('./community.validator');
 
 // TODO: 라우트 추가
 router.post('/posts', validate(createPostSchema), communityController.createPost);
+router.get('/posts/:id', communityController.getPostById);
 
 module.exports = router;

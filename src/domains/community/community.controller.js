@@ -12,4 +12,14 @@ const createPost = async (req, res, next) => {
   }
 };
 
-module.exports = { createPost };
+const getPostById = async (req, res, next) => {
+  try {
+    const postId = req.params.id;
+    const post = await communityService.getPostById(postId);
+    res.json({ success: true, data: post });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createPost, getPostById };
