@@ -8,6 +8,31 @@ const createPost = async (user_id, post_type, stock_code, opinion, title, conten
   return await communityRepository.findById(id);
 };
 
+// 게시글 수정
+const updatePost = async (postId, userId, updateData) => {
+  const post = await communityRepository.findById(postId);
+  if (!post) {
+    throw new AppError('Post not found', 404);
+  }
+  if (post.user_id !== userId) {
+    throw new AppError('Forbidden', 403);
+  }
+  await communityRepository.update(postId, updateData);
+  return await communityRepository.findById(postId);
+};
+
+// 게시글 삭제
+const deletePost = async (postId, userId) => {
+  const post = await communityRepository.findById(postId);
+  if (!post) {
+    throw new AppError('Post not found', 404);
+  }
+  if (post.user_id !== userId) {
+    throw new AppError('Forbidden', 403);
+  }
+  await communityRepository.softDelete(postId);
+};
+
 // 단일 게시글 조회
 const getPostById = async (id) => {
   const post = await communityRepository.findById(id);
@@ -27,4 +52,4 @@ const getPostsByCursor = async (cursor, limit) => {
   return { posts, hasNext };
 };
 
-module.exports = { createPost, getPostById, getPostsByCursor };
+module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost };

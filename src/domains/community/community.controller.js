@@ -13,6 +13,32 @@ const createPost = async (req, res, next) => {
   }
 };
 
+// 게시글 수정
+const updatePost = async (req, res, next) => {
+  try {
+    const postId = Number(req.params.id);
+    const userId = Number(req.body.user_id); // TODO: 나중에 req.user.id로 교체
+    const updateData = req.validated; // validate 미들웨어에서 검증된 데이터
+    const post = await communityService.updatePost(postId, userId, updateData);
+    res.json({ success: true, data: post });
+  }
+  catch (err) {
+    next(err);
+  }
+};
+
+// 게시글 삭제
+const deletePost = async (req, res, next) => {
+  try {
+    const postId = Number(req.params.id);
+    const userId = Number(req.body.user_id); // TODO: 나중에 req.user.id로 교체
+    await communityService.deletePost(postId, userId);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+};
+
 // 단일 게시글 조회
 const getPostById = async (req, res, next) => {
   try {
@@ -36,4 +62,4 @@ const getPostsByCursor = async (req, res, next) => {
   }
 };
 
-module.exports = { createPost, getPostById, getPostsByCursor };
+module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost };

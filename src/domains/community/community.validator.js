@@ -18,10 +18,17 @@ const createPostSchema = Joi.object({
     content: Joi.string().trim().required()
 })
 
+// 게시글 수정 스키마
+const updatePostSchema = Joi.object({
+    title: Joi.string().trim().min(1),
+    content: Joi.string().trim().min(1),
+    opinion: Joi.string().valid('BUY', 'NEUTRAL', 'SELL')
+}).min(1); // 최소한 하나 이상의 필드가 필요하도록 설정
+
 // cursor 기반 페이지네이션 스키마
 const getPostsByCursorSchema = Joi.object({
     cursor: Joi.number().integer().optional(), // 다음 페이지의 시작점이 되는 게시글 ID
     limit: Joi.number().integer().min(1).max(100).default(20) // 페이지당 최대 100개, 기본값 20
 });
 
-module.exports = { createPostSchema, getPostsByCursorSchema };
+module.exports = { createPostSchema, getPostsByCursorSchema, updatePostSchema };

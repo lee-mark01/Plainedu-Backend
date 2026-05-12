@@ -11,6 +11,27 @@ const save = async (user_id, post_type, stock_code, opinion, title, content) => 
     return result.insertId;
 };
 
+// 게시글 수정
+const update = async (id, fields) => {
+    const keys = Object.keys(fields);
+    const setClause = keys.map(k => `${k} = ?`).join(',');
+    const values = keys.map(k => fields[k]);
+    await pool.query(
+      `UPDATE CommunityPosts SET ${setClause},
+  updated_at = NOW() WHERE id = ?`,
+      [...values, id]
+  );
+};
+
+
+// 게시글 소프트 딜리트
+const softDelete = async (id) => {
+    await pool.query(
+      'UPDATE CommunityPosts SET deleted_at = NOW() WHERE id = ?',
+      [id]
+  );
+};
+
 // 단일 게시글 조회
 const findById = async (id) => {
   const [rows] = await pool.query('SELECT * FROM CommunityPosts WHERE id = ?', [id]);
@@ -36,4 +57,4 @@ const findByCursor = async (cursor, limit) => {
     }
 }
 
-module.exports = { save, findById, findByCursor };
+module.exports = { save, findById, findByCursor, update, softDelete };
