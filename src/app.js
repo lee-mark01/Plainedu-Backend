@@ -3,6 +3,8 @@ const cors = require('cors');
 const errorHandler = require('./middlewares/errorHandler');
 
 // 도메인 라우터
+const authRouter = require('./domains/auth/auth.router');
+const authController = require('./domains/auth/auth.controller');
 const userRouter = require('./domains/user/user.router');
 const learningRouter = require('./domains/learning/learning.router');
 const teamRouter = require('./domains/team/team.router');
@@ -15,7 +17,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 카카오 OAuth 리다이렉트 콜백 (KAKAO_REDIRECT_URI 대응)
+app.get('/auth/kakao/callback', authController.kakaoLogin);
+
 // 라우터 연결
+app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
 app.use('/api/learning', learningRouter);
 app.use('/api/teams', teamRouter);
