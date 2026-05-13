@@ -39,22 +39,50 @@ const findById = async (id) => {
 };
 
 // cursor 기반 페이지네이션
-const findByCursor = async (cursor, limit) => {
+const findByCursor = async ({ cursor, limit, post_type, stock_code, keyword, search_type, user_id }) => {
+  const conditions = [];
+  const params = [];
+  let join = '';
+
   if (cursor) {
-    // WHERE id < cursor 붙인 쿼리
-      const [rows] = await pool.query(
-        'SELECT * FROM CommunityPosts WHERE id < ? ORDER BY id DESC LIMIT ?',
-        [cursor, limit]
-      );
-      return rows;
-    } else {
-      // WHERE 없이 최신순 limit개
-      const [rows] = await pool.query(
-        'SELECT * FROM CommunityPosts ORDER BY id DESC LIMIT ?',
-        [limit]
-      );
-      return rows;
+    conditions.push('p.id < ?');
+    params.push(cursor);
+  }
+  if (post_type) {
+    conditions.push('p.post_type = ?');
+    params.push(post_type);
+  }
+  if (stock_code) {
+    conditions.push('p.stock_code = ?');
+    params.push(stock_code);
+  }
+  if (user_id) {
+    conditions.push('p.user_id = ?');
+    params.push(user_id);
+  }
+
+  if (keyword && search_type) {
+      if (search_type === 'TITLE') {
+        conditions.push('p.title LIKE ?');
+        params.push(`%${keyword}%`);
+      } else if (search_type === 'CONTENT') {
+        conditions.push('p.content LIKE ?');
+        params.push(`%${keyword}%`);
+      } else if (search_type === 'AUTHOR') {
+        join = 'JOIN Users u ON p.user_id = u.id';
+        conditions.push('u.name LIKE ?');
+        params.push(`%${keyword}%`);
+      }
     }
-}
+
+  const whereClause = conditions.length > 0 ? `WHERE
+  ${conditions.join(' AND ')}` : '';
+    const [rows] = await pool.query(
+      `SELECT p.* FROM CommunityPosts p ${join} ${whereClause} ORDER
+  BY p.id DESC LIMIT ?`,
+      [...params, limit]
+    );
+    return rows;
+  };
 
 module.exports = { save, findById, findByCursor, update, softDelete };

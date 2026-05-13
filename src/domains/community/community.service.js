@@ -1,6 +1,7 @@
 // TODO: 서비스 구현
 const AppError = require('../../errors/AppError');
 const communityRepository = require('./community.repository');
+const stockService = require('../stock/stock.service');
 
 // 게시글 생성
 const createPost = async (user_id, post_type, stock_code, opinion, title, content) => {
@@ -43,8 +44,8 @@ const getPostById = async (id) => {
 };
 
 // cursor 기반 페이지네이션 posts + hasNext(다음 페이지 존재 여부)
-const getPostsByCursor = async (cursor, limit) => {
-  const posts = await communityRepository.findByCursor(cursor, limit+1); // 다음 페이지 존재 여부 확인 위해 limit+1개 조회
+const getPostsByCursor = async ({ cursor, limit, post_type, stock_code, keyword, search_type, user_id }) => {
+  const posts = await communityRepository.findByCursor({ cursor, limit: limit+1, post_type, stock_code, keyword, search_type, user_id } ); // 다음 페이지 존재 여부 확인 위해 limit+1개 조회
   const hasNext = posts.length === limit+1; // limit+1개 조회됐으면 다음 페이지 존재
   if (hasNext) {
     posts.pop(); // 다음 페이지 존재 여부 확인 위해 조회한 마지막 게시글 제거
@@ -52,4 +53,9 @@ const getPostsByCursor = async (cursor, limit) => {
   return { posts, hasNext };
 };
 
-module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost };
+// 종목 검색
+const searchStocks = async (keyword, limit) => {
+  return await stockService.searchStocks(keyword, limit);
+};
+
+module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost, searchStocks };
