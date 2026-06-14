@@ -1,5 +1,4 @@
-const errorHandler = (err, req, res, next) => {
-  console.error(err.stack);
+const AppError = require('../errors/AppError');
 
   const status = err.status || 500;
   const message = err.message || '서버 내부 오류가 발생했습니다.';
