@@ -49,16 +49,20 @@ CREATE TABLE IF NOT EXISTS Users (
 
 -- 1-4. RefreshTokens
 CREATE TABLE IF NOT EXISTS RefreshTokens (
-  id          INT          NOT NULL AUTO_INCREMENT,
-  user_id     INT          NOT NULL,
-  token_hash  VARCHAR(255) NOT NULL,
-  ip_address  VARCHAR(45)  NULL,
-  user_agent  VARCHAR(255) NULL,
-  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  expires_at  TIMESTAMP    NOT NULL,
+  id                   INT          NOT NULL AUTO_INCREMENT,
+  user_id              INT          NOT NULL,
+  token_hash           VARCHAR(255) NOT NULL,
+  family_id            CHAR(36)     NOT NULL,               -- UUID, 세션 계보 (Reuse Detection)
+  used                 TINYINT(1)   NOT NULL DEFAULT 0,     -- 소비 여부: 1이면 탈취 의심
+  ip_address           VARCHAR(45)  NULL,
+  user_agent           VARCHAR(255) NULL,
+  created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at           TIMESTAMP    NOT NULL,               -- 슬라이딩 만료 (갱신 시 7일 연장)
+  absolute_expires_at  TIMESTAMP    NOT NULL,               -- 절대 만료 (최초 발급 시 90일 고정)
   PRIMARY KEY (id),
   INDEX idx_refresh_user_id (user_id),
   INDEX idx_refresh_token_hash (token_hash),
+  INDEX idx_refresh_family_id (family_id),
   CONSTRAINT fk_refresh_user
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
