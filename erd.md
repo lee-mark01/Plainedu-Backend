@@ -49,16 +49,20 @@ CREATE TABLE IF NOT EXISTS Users (
 
 -- 1-4. RefreshTokens
 CREATE TABLE IF NOT EXISTS RefreshTokens (
-  id          INT          NOT NULL AUTO_INCREMENT,
-  user_id     INT          NOT NULL,
-  token_hash  VARCHAR(255) NOT NULL,
-  ip_address  VARCHAR(45)  NULL,
-  user_agent  VARCHAR(255) NULL,
-  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  expires_at  TIMESTAMP    NOT NULL,
+  id                   INT          NOT NULL AUTO_INCREMENT,
+  user_id              INT          NOT NULL,
+  token_hash           VARCHAR(255) NOT NULL,
+  family_id            CHAR(36)     NOT NULL,               -- UUID, 세션 계보 (Reuse Detection)
+  used                 TINYINT(1)   NOT NULL DEFAULT 0,     -- 소비 여부: 1이면 탈취 의심
+  ip_address           VARCHAR(45)  NULL,
+  user_agent           VARCHAR(255) NULL,
+  created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at           TIMESTAMP    NOT NULL,               -- 슬라이딩 만료 (갱신 시 7일 연장)
+  absolute_expires_at  TIMESTAMP    NOT NULL,               -- 절대 만료 (최초 발급 시 90일 고정)
   PRIMARY KEY (id),
   INDEX idx_refresh_user_id (user_id),
   INDEX idx_refresh_token_hash (token_hash),
+  INDEX idx_refresh_family_id (family_id),
   CONSTRAINT fk_refresh_user
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -689,11 +693,19 @@ SET FOREIGN_KEY_CHECKS = 1;
 | --- | --- | --- | --- | --- |
 | id | 토큰 고유 ID | INT | PK | Auto Increment |
 | user_id | 토큰 소유자 | INT | FK | Users(id) 참조 / Not Null / CASCADE 삭제 |
-| token_hash | Refresh Token 해시값 | VARCHAR(255) | - | Not Null / SHA-256 해시 저장 |
-| ip_address | 접속 기기 IP 주소 | VARCHAR(45) | - | IPv6 대응 |
-| user_agent | 브라우저/기기 정보 | VARCHAR(255) | - |  |
+| token_hash | Refresh Token 해시값 | VARCHAR(255) | - | Not Null / SHA-256 해시 저장 / 인덱스(idx_refresh_token_hash) |
+| family_id | 세션 계보 ID | CHAR(36) | - | Not Null / UUID / 로그인 1회 = family 1개 / 인덱스(idx_refresh_family_id) |
+| used | 소비 여부 | TINYINT(1) | - | 기본값 0 / 1이면 이미 사용된 토큰 = 재사용 시 탈취 의심 |
+| ip_address | 접속 기기 IP 주소 | VARCHAR(45) | - | IPv6 대응 / 감사 로그용 |
+| user_agent | 브라우저/기기 정보 | VARCHAR(255) | - | 감사 로그용 |
 | created_at | 토큰 발급 일시 | TIMESTAMP | - | 기본값 CURRENT_TIMESTAMP |
-| expires_at | 토큰 만료 일시 | TIMESTAMP | - | Not Null |
+| expires_at | 슬라이딩 만료 일시 | TIMESTAMP | - | Not Null / 갱신 시마다 7일 연장 / 7일 미사용 시 만료 |
+| absolute_expires_at | 절대 만료 일시 | TIMESTAMP | - | Not Null / 최초 발급 시 90일 고정 / 아무리 갱신해도 이 날짜 이후 재로그인 필요 |
+
+**토큰 보안 전략:**
+- **Rotation** — `/refresh` 호출 시 기존 토큰 `used=1` 처리 후 신규 토큰 발급
+- **Reuse Detection** — `used=1` 토큰 재사용 감지 시 `family_id` 기준 세션 계보 전체 삭제 (탈취 대응)
+- **배치 정리** — 매일 새벽 3시 `absolute_expires_at < NOW()` 인 행 삭제 (`used=1`이어도 절대 만료 전까지 보존)
 
 ### **1-5. school_VerificationLogs (학교 인증 로그)**
 
