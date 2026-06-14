@@ -53,8 +53,8 @@ const getPostById = async (req, res, next) => {
 // cursor 기반 페이지네이션 게시글 조회
 const getPostsByCursor = async (req, res, next) => {
   try {
-    const { cursor, limit } = req.validated; // validate 미들웨어에서 검증된 데이터
-    const { posts, hasNext } = await communityService.getPostsByCursor(cursor, limit);
+    const { cursor, limit, post_type, stock_code, keyword, search_type, user_id } = req.validated; // validate 미들웨어에서 검증된 데이터
+    const { posts, hasNext } = await communityService.getPostsByCursor( { cursor, limit, post_type, stock_code, keyword, search_type, user_id } );
     res.json({ success: true, data: { posts, hasNext } });
   }
   catch (err) {
@@ -62,4 +62,16 @@ const getPostsByCursor = async (req, res, next) => {
   }
 };
 
-module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost };
+// 종목 검색 
+const searchStocks = async (req, res, next) => {
+  try {
+    const { keyword, limit } = req.validated; // validate 미들웨어에서 검증된 데이터
+    const stocks = await communityService.searchStocks(keyword, limit);
+    res.json({ success: true, data: stocks });
+  }
+  catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost, searchStocks };
