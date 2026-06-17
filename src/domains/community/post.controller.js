@@ -1,11 +1,11 @@
 // TODO: 컨트롤러 구현
-const communityService = require('./community.service');
+const communityService = require('./post.service');
 
 // 게시글 생성
 const createPost = async (req, res, next) => {
   try {
-    const value = req.validated; // validate 미들웨어에서 검증된 데이터
-    const { user_id, post_type, stock_code, opinion, title, content } = value;
+    const { post_type, stock_code, opinion, title, content } = req.validated;
+    const user_id = req.user.userId;
     const post = await communityService.createPost(user_id, post_type, stock_code, opinion, title, content);
     res.status(201).json({ success: true, data: post });
   } catch (err) {
@@ -17,9 +17,9 @@ const createPost = async (req, res, next) => {
 const updatePost = async (req, res, next) => {
   try {
     const postId = Number(req.params.id);
-    const userId = Number(req.body.user_id); // TODO: 나중에 req.user.id로 교체
-    const updateData = req.validated; // validate 미들웨어에서 검증된 데이터
-    const post = await communityService.updatePost(postId, userId, updateData);
+    const user_id = req.user.userId;
+    const updateData = req.validated;
+    const post = await communityService.updatePost(postId, user_id, updateData);
     res.json({ success: true, data: post });
   }
   catch (err) {
@@ -31,9 +31,9 @@ const updatePost = async (req, res, next) => {
 const deletePost = async (req, res, next) => {
   try {
     const postId = Number(req.params.id);
-    const userId = Number(req.body.user_id); // TODO: 나중에 req.user.id로 교체
-    await communityService.deletePost(postId, userId);
-    res.status(204).end();
+    const user_id = req.user.userId;
+    await communityService.deletePost(postId, user_id);
+    res.status(200).json({ success: true, message: 'Post deleted' });
   } catch (err) {
     next(err);
   }
@@ -53,8 +53,21 @@ const getPostById = async (req, res, next) => {
 // cursor 기반 페이지네이션 게시글 조회
 const getPostsByCursor = async (req, res, next) => {
   try {
-    const { cursor, limit, post_type, stock_code, keyword, search_type, user_id } = req.validated; // validate 미들웨어에서 검증된 데이터
-    const { posts, hasNext } = await communityService.getPostsByCursor( { cursor, limit, post_type, stock_code, keyword, search_type, user_id } );
+    const { cursor, limit, post_type, stock_code, keyword, search_type } = req.validated;
+    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, post_type, stock_code, keyword, search_type });
+    res.json({ success: true, data: { posts, hasNext } });
+  }
+  catch (err) {
+    next(err);
+  }
+};
+
+// 내가 쓴 게시글 조회
+const getMyPosts = async (req, res, next) => {
+  try {
+    const user_id = req.user.userId;
+    const { cursor, limit } = req.validated;
+    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, user_id });
     res.json({ success: true, data: { posts, hasNext } });
   }
   catch (err) {
@@ -74,4 +87,4 @@ const searchStocks = async (req, res, next) => {
   }
 };
 
-module.exports = { createPost, getPostById, getPostsByCursor, updatePost, deletePost, searchStocks };
+module.exports = { createPost, getPostById, getPostsByCursor, getMyPosts, updatePost, deletePost, searchStocks };
