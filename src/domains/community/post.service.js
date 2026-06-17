@@ -1,12 +1,23 @@
-// TODO: 서비스 구현
 const AppError = require('../../errors/AppError');
-const communityRepository = require('./community.repository');
+const communityRepository = require('./post.repository');
 const stockService = require('../stock/stock.service');
+const notificationService = require('./notification.service');
+const followRepository = require('./follow.repository');
 
 // 게시글 생성
 const createPost = async (user_id, post_type, stock_code, opinion, title, content) => {
   const id = await communityRepository.save(user_id, post_type, stock_code, opinion, title, content);
-  return await communityRepository.findById(id);
+  const post = await communityRepository.findById(id);
+
+  // 팔로워들에게 알림 발송
+  const followers = await followRepository.findFollowers(user_id);
+  for (const follower of followers) {
+    await notificationService.createNotification(
+      follower.id, user_id, 'FOLLOWEE_POST', id, title
+    );
+  }
+
+  return post;
 };
 
 // 게시글 수정

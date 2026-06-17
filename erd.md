@@ -370,13 +370,7 @@ CREATE TABLE IF NOT EXISTS VirtualAccounts (
   CONSTRAINT fk_va_team
     FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_va_season
-    FOREIGN KEY (season_id) REFERENCES Seasons(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-  -- MySQL 8.0.16+ CHECK 제약 enforced
-  CONSTRAINT chk_va_owner CHECK (
-    (account_type = 'INDIVIDUAL' AND user_id IS NOT NULL AND team_id IS NULL)
-    OR
-    (account_type = 'TEAM' AND team_id IS NOT NULL AND user_id IS NULL)
-  )
+    FOREIGN KEY (season_id) REFERENCES Seasons(id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4-2. AccountAssetHistories
@@ -516,12 +510,6 @@ CREATE TABLE IF NOT EXISTS CommunityPosts (
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_cp_stock
     FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE,
-  -- 종목토론은 stock_code & opinion 필수, 일반은 둘 다 NULL
-  CONSTRAINT chk_cp_type_fields CHECK (
-    (post_type = 'STOCK_DISCUSSION' AND stock_code IS NOT NULL AND opinion IS NOT NULL)
-    OR
-    (post_type = 'GENERAL' AND stock_code IS NULL AND opinion IS NULL)
-  )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6-2. CommunityComments
@@ -585,8 +573,7 @@ CREATE TABLE IF NOT EXISTS Follows (
   CONSTRAINT fk_follows_follower
     FOREIGN KEY (follower_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_follows_followee
-    FOREIGN KEY (followee_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT chk_follows_self CHECK (follower_id <> followee_id)
+    FOREIGN KEY (followee_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6-6. Notifications

@@ -34,7 +34,7 @@ const softDelete = async (id) => {
 
 // 단일 게시글 조회
 const findById = async (id) => {
-  const [rows] = await pool.query('SELECT * FROM CommunityPosts WHERE id = ?', [id]);
+  const [rows] = await pool.query('SELECT * FROM CommunityPosts WHERE id = ? AND deleted_at IS NULL', [id]);
   return rows[0];
 };
 
