@@ -21,33 +21,33 @@ const createPost = async (user_id, post_type, stock_code, opinion, title, conten
 };
 
 // 게시글 수정
-const updatePost = async (postId, userId, updateData) => {
-  const post = await communityRepository.findById(postId);
+const updatePost = async (post_id, user_id, updateData) => {
+  const post = await communityRepository.findById(post_id);
   if (!post) {
     throw new AppError('Post not found', 404);
   }
-  if (post.user_id !== userId) {
+  if (post.user_id !== user_id) {
     throw new AppError('Forbidden', 403);
   }
-  await communityRepository.update(postId, updateData);
-  return await communityRepository.findById(postId);
+  await communityRepository.update(post_id, updateData);
+  return await communityRepository.findById(post_id);
 };
 
 // 게시글 삭제
-const deletePost = async (postId, userId) => {
-  const post = await communityRepository.findById(postId);
+const deletePost = async (post_id, user_id) => {
+  const post = await communityRepository.findById(post_id);
   if (!post) {
     throw new AppError('Post not found', 404);
   }
-  if (post.user_id !== userId) {
+  if (post.user_id !== user_id) {
     throw new AppError('Forbidden', 403);
   }
-  await communityRepository.softDelete(postId);
+  await communityRepository.softDelete(post_id);
 };
 
 // 단일 게시글 조회
-const getPostById = async (id) => {
-  const post = await communityRepository.findById(id);
+const getPostById = async (post_id) => {
+  const post = await communityRepository.findById(post_id);
   if (!post) {
     throw new AppError('Post not found', 404);
   }

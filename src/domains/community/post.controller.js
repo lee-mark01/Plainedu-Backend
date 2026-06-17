@@ -16,10 +16,10 @@ const createPost = async (req, res, next) => {
 // 게시글 수정
 const updatePost = async (req, res, next) => {
   try {
-    const postId = Number(req.params.id);
+    const post_id = Number(req.params.id);
     const user_id = req.user.userId;
     const updateData = req.validated;
-    const post = await communityService.updatePost(postId, user_id, updateData);
+    const post = await communityService.updatePost(post_id, user_id, updateData);
     res.json({ success: true, data: post });
   }
   catch (err) {
@@ -30,9 +30,9 @@ const updatePost = async (req, res, next) => {
 // 게시글 삭제
 const deletePost = async (req, res, next) => {
   try {
-    const postId = Number(req.params.id);
+    const post_id = Number(req.params.id);
     const user_id = req.user.userId;
-    await communityService.deletePost(postId, user_id);
+    await communityService.deletePost(post_id, user_id);
     res.status(200).json({ success: true, message: 'Post deleted' });
   } catch (err) {
     next(err);
@@ -42,8 +42,8 @@ const deletePost = async (req, res, next) => {
 // 단일 게시글 조회
 const getPostById = async (req, res, next) => {
   try {
-    const postId = req.params.id;
-    const post = await communityService.getPostById(postId);
+    const post_id = req.params.id;
+    const post = await communityService.getPostById(post_id);
     res.json({ success: true, data: post });
   } catch (err) {
     next(err);
