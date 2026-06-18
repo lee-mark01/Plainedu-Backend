@@ -42,6 +42,26 @@ const naverLogin = async (req, res, next) => {
   }
 };
 
+const googleLogin = async (req, res, next) => {
+  try {
+    const code = req.body?.code || req.query.code;
+    const ipAddress = req.ip;
+    const userAgent = req.headers['user-agent'];
+
+    const { accessToken, refreshToken, user, isNew } = await authService.oauthLogin('google', code, {
+      ipAddress,
+      userAgent,
+    });
+
+    res.status(isNew ? 201 : 200).json({
+      success: true,
+      data: { accessToken, refreshToken, user },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const refresh = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -64,4 +84,4 @@ const logout = async (req, res, next) => {
   }
 };
 
-module.exports = { kakaoLogin, naverLogin, refresh, logout };
+module.exports = { kakaoLogin, naverLogin, googleLogin, refresh, logout };

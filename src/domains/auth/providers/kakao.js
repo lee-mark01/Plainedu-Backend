@@ -30,12 +30,16 @@ const getProfile = async (accessToken) => {
     });
     const snsId = String(data.id);
     const kakaoAccount = data.kakao_account || {};
+    if (!kakaoAccount.email) {
+      throw new AppError('이메일 제공에 동의해야 로그인할 수 있습니다.', 403, 'EMAIL_REQUIRED');
+    }
     return {
       snsId,
-      email: kakaoAccount.email || `kakao_${snsId}@noemail.local`,
+      email: kakaoAccount.email,
       nickname: kakaoAccount.profile?.nickname || `카카오유저_${snsId.slice(-6)}`,
     };
-  } catch {
+  } catch (err) {
+    if (err instanceof AppError) throw err;
     throw new AppError('카카오 사용자 정보를 가져오지 못했습니다.', 502);
   }
 };

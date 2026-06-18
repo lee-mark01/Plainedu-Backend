@@ -6,6 +6,7 @@ const { signAccessToken, generateRefreshToken, hashToken } = require('../../util
 const providers = {
   kakao: require('./providers/kakao'),
   naver: require('./providers/naver'),
+  google: require('./providers/google'),
 };
 
 const PROVIDER_LABEL = { kakao: '카카오', naver: '네이버', google: '구글', local: '이메일' };
