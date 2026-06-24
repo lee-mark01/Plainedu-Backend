@@ -1,5 +1,6 @@
 node_modules/
 .env
+spikes/**/.env
 .claude
 .claude_cache/
 .claude_cache_*
