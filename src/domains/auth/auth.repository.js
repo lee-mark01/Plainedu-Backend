@@ -8,6 +8,14 @@ const findUserBySnsId = async (provider, snsId) => {
   return rows[0] || null;
 };
 
+const findUserByEmail = async (email) => {
+  const [rows] = await pool.query(
+    'SELECT id, email, nickname, role, provider, sns_id FROM Users WHERE email = ?',
+    [email]
+  );
+  return rows[0] || null;
+};
+
 const createOauthUser = async ({ email, nickname, provider, snsId }) => {
   const [result] = await pool.query(
     'INSERT INTO Users (email, nickname, provider, sns_id) VALUES (?, ?, ?, ?)',
@@ -72,6 +80,7 @@ const deleteExpiredTokens = async () => {
 
 module.exports = {
   findUserBySnsId,
+  findUserByEmail,
   createOauthUser,
   findUserById,
   saveRefreshToken,

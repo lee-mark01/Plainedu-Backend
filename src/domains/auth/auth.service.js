@@ -5,24 +5,40 @@ const { signAccessToken, generateRefreshToken, hashToken } = require('../../util
 
 const providers = {
   kakao: require('./providers/kakao'),
+  naver: require('./providers/naver'),
+  google: require('./providers/google'),
 };
+
+const PROVIDER_LABEL = { kakao: '카카오', naver: '네이버', google: '구글', local: '이메일' };
+const labelOf = (p) => PROVIDER_LABEL[p] || p;
 
 const SLIDING_TTL_MS  = 7  * 24 * 60 * 60 * 1000;  // 7일 (미사용 시 만료)
 const ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1000;  // 90일 (절대 만료)
 
-const oauthLogin = async (provider, code, { ipAddress, userAgent }) => {
+const oauthLogin = async (provider, code, { ipAddress, userAgent, state }) => {
   if (!code) throw new AppError('인가 코드가 없습니다.', 400);
 
   const handler = providers[provider];
   if (!handler) throw new AppError('지원하지 않는 로그인 방식입니다.', 400);
 
-  const providerToken = await handler.exchangeCode(code);
+  const providerToken = await handler.exchangeCode(code, { state });
   const { snsId, email, nickname } = await handler.getProfile(providerToken);
 
   let user = await authRepository.findUserBySnsId(provider, snsId);
   let isNew = false;
 
   if (!user) {
+    const isRealEmail = email && !email.endsWith('@noemail.local');
+    if (isRealEmail) {
+      const byEmail = await authRepository.findUserByEmail(email);
+      if (byEmail && byEmail.provider !== provider) {
+        throw new AppError(
+          `이미 ${labelOf(byEmail.provider)} 계정으로 가입되어 있습니다. ${labelOf(byEmail.provider)}로 로그인해주세요.`,
+          409,
+          'PROVIDER_CONFLICT'
+        );
+      }
+    }
     const userId = await authRepository.createOauthUser({ email, nickname, provider, snsId });
     user = await authRepository.findUserById(userId);
     isNew = true;
