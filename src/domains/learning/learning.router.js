@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const learningController = require('./learning.controller');
-const authMiddleware = require('../../middlewares/authMiddleware');
+const authMiddleware = require('../../middlewares/authenticate');
 const validate = require('../../middlewares/validate');
 const {
   quizAnswerSchema,

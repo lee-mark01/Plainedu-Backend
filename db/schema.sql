@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS schools (
   region        VARCHAR(50)  NULL,
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  INDEX idx_school_name (school_name),
+  -- (school_name, region) 유일: 커리어넷 동기화 재실행 시 중복 방지 (upsert 키)
+  UNIQUE KEY uq_school_name_region (school_name, region),
   INDEX idx_region (region)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -228,11 +229,13 @@ CREATE TABLE IF NOT EXISTS Teams (
   id                   INT         NOT NULL AUTO_INCREMENT,
   school_id            INT         NOT NULL,
   name                 VARCHAR(50) NOT NULL,
+  join_code            VARCHAR(8)  NOT NULL,
   max_member_count     INT         NOT NULL DEFAULT 4,
   current_member_count INT         NOT NULL DEFAULT 1,
   created_at           TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_teams_school_name (school_id, name),
+  UNIQUE KEY uq_teams_join_code (join_code),
   CONSTRAINT fk_teams_school
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

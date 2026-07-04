@@ -11,6 +11,7 @@ const teamRouter = require('./domains/team/team.router');
 const tradingRouter = require('./domains/trading/trading.router');
 const rankingRouter = require('./domains/ranking/ranking.router');
 const communityRouter = require('./domains/community/community.router');
+const schoolRouter = require('./domains/school/school.router');
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/teams', teamRouter);
 app.use('/api/trading', tradingRouter);
 app.use('/api/ranking', rankingRouter);
 app.use('/api/community', communityRouter);
+app.use('/api/schools', schoolRouter);
 
 // 헬스체크
 app.get('/api/health', (req, res) => {
