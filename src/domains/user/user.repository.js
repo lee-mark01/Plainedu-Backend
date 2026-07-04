@@ -5,4 +5,12 @@ const findAll = async () => {
   return rows;
 };
 
-module.exports = { findAll };
+const findById = async (id) => {
+  const [rows] = await pool.query(
+    'SELECT id, email, nickname, role, school_id, school_is_verified, position FROM Users WHERE id = ?',
+    [id]
+  );
+  return rows[0] || null;
+};
+
+module.exports = { findAll, findById };
