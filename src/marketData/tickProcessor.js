@@ -9,21 +9,37 @@ const chartService = require('../domains/stock/chart.service');
 const PRICE_TTL_SECONDS = Number(process.env.PRICE_TTL_SECONDS) || 60;
 
 // 전일종가는 하루 단위로만 바뀌므로 메모리에 두고 주기 갱신 (1day 캐시 재조회 부담 제거)
+// 실패도 쿨다운으로 기록한다 — 안 그러면 429(한도 초과) 동안 매 틱이 API를 재시도하는 폭풍이 됨
 const PREV_CLOSE_REFRESH_MS = 5 * 60_000;
-const prevCloseCache = new Map(); // symbol → { value, fetchedAt }
+const FAIL_COOLDOWN_MS = 60_000;
+const prevCloseCache = new Map(); // symbol → { value, fetchedAt, failed }
+const inflight = new Map(); // symbol → Promise (동시 틱의 중복 호출 방지)
 
 const getPrevClose = async (symbol) => {
   const hit = prevCloseCache.get(symbol);
-  if (hit && Date.now() - hit.fetchedAt < PREV_CLOSE_REFRESH_MS) return hit.value;
-
-  try {
-    const value = await chartService.getPrevClose(symbol);
-    prevCloseCache.set(symbol, { value, fetchedAt: Date.now() });
-    return value;
-  } catch (err) {
-    console.error(`[tickProcessor] ${symbol} 전일종가 조회 실패:`, err.message);
-    return hit?.value ?? null; // 만료된 값이라도 있으면 사용
+  if (hit) {
+    const maxAge = hit.failed ? FAIL_COOLDOWN_MS : PREV_CLOSE_REFRESH_MS;
+    if (Date.now() - hit.fetchedAt < maxAge) return hit.value;
   }
+
+  let pending = inflight.get(symbol);
+  if (!pending) {
+    pending = chartService
+      .getPrevClose(symbol)
+      .then((value) => {
+        prevCloseCache.set(symbol, { value, fetchedAt: Date.now(), failed: false });
+        return value;
+      })
+      .catch((err) => {
+        console.error(`[tickProcessor] ${symbol} 전일종가 조회 실패(${FAIL_COOLDOWN_MS / 1000}초 후 재시도):`, err.message);
+        const stale = hit?.value ?? null; // 만료된 값이라도 있으면 사용
+        prevCloseCache.set(symbol, { value: stale, fetchedAt: Date.now(), failed: true });
+        return stale;
+      })
+      .finally(() => inflight.delete(symbol));
+    inflight.set(symbol, pending);
+  }
+  return pending;
 };
 
 // WS price 이벤트 → 브로드캐스트 페이로드
