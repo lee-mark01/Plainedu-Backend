@@ -1,6 +1,6 @@
-// range → interval/outputsize 매핑 단일 진실원천 (스펙 §2)
+// range → interval/outputsize 매핑 단일 진실원천
 // 기간 뷰 = interval × outputsize 조합. interval당 수집량은 1가지로 고정하고
-// 캐시 키를 chart:{symbol}:{interval}로 공유한다 (스펙 §4).
+// 캐시 키를 chart:{symbol}:{interval}로 공유한다-
 
 const { isSymbolMarketOpen } = require('./marketHours');
 
@@ -20,7 +20,7 @@ const RANGES = Object.keys(RANGE_MAP);
 // (일봉 이상은 표준 수집량이 전체를 커버하고, time이 날짜 문자열이라 그대로 차트에 꽂힘)
 const INTRADAY_INTERVALS = new Set(['5min', '30min']);
 
-// 장중 TTL(초): 신규 봉 생성 지점의 데이터 구멍 방지 목적 (스펙 §4)
+// 장중 TTL(초): 신규 봉 생성 지점의 데이터 구멍 방지 목적 -
 const OPEN_TTL = {
   '5min': 30,
   '30min': 60,

@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 
-// Twelve Data WebSocket 업스트림 (스펙 §5)
+// Twelve Data WebSocket 업스트림 
 // 서버가 연결 1개만 유지하고 전 종목을 구독한다 — API 키 보호 + 무료 플랜 연결 한도 대응.
 // 무료 플랜 한도: 최대 8종목, REST 크레딧과 별도.
 const WS_BASE = 'wss://ws.twelvedata.com/v1/quotes/price';
@@ -9,7 +9,7 @@ const BASE_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 60_000;
 
 // onTick(priceEvent): price 이벤트 수신 콜백
-// onReconnect(): 재연결 성공 콜백 — 공백 구간 동안의 틱은 복구 불가하므로 재싱크 트리거용 (스펙 §10-2)
+// onReconnect(): 재연결 성공 콜백 — 공백 구간 동안의 틱은 복구 불가하므로 재싱크 트리거용 
 const createUpstream = ({ symbols, onTick, onReconnect }) => {
   let ws = null;
   let heartbeatTimer = null;

@@ -2,7 +2,7 @@ const { createUpstream } = require('./wsUpstream');
 const tickProcessor = require('./tickProcessor');
 const wsGateway = require('./wsGateway');
 
-// 실시간 시세 파이프라인 조립 (스펙 §5)
+// 실시간 시세 파이프라인 조립 
 // Twelve Data WS ─(연결 1개)→ tickProcessor(price:{sym} 갱신 + 등락률) → Socket.IO 브로드캐스트
 
 // 무료 플랜 WS 한도 8종목 이내로 유지할 것

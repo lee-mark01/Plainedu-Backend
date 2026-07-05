@@ -11,7 +11,7 @@ const symbolParamsSchema = Joi.object({
     .messages({ 'string.pattern.base': '올바르지 않은 심볼 형식입니다.' }),
 });
 
-// range enum은 rangeMap 키와 자동 동기화 (스펙 §8)
+// range enum은 rangeMap 키와 자동 동기화
 // before: 분봉 lazy 로딩 기준점 — 보유한 가장 오래된 봉의 time(unix 초) 그대로 전달
 const chartQuerySchema = Joi.object({
   range: Joi.string()

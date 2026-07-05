@@ -1,7 +1,7 @@
 const redis = require('../config/redis');
 const chartService = require('../domains/stock/chart.service');
 
-// 틱 처리 (스펙 §5~6)
+// 틱 처리 
 // 1) price:{symbol} 덮어쓰기 — 차트용이 아니라 trading/portfolio 등 타 도메인이 읽는 공용 현재가
 // 2) 전일종가 대비 등락액/등락률 계산 → 게이트웨이가 그대로 브로드캐스트
 
@@ -27,7 +27,7 @@ const getPrevClose = async (symbol) => {
 };
 
 // WS price 이벤트 → 브로드캐스트 페이로드
-// 반올림은 프론트 담당이므로 원시 숫자 그대로 전달 (스펙 §3-5)
+// 반올림은 프론트 담당이므로 원시 숫자 그대로 전달 
 const processTick = async (tick) => {
   const { symbol, price, timestamp } = tick;
 
@@ -37,7 +37,7 @@ const processTick = async (tick) => {
       JSON.stringify({
         symbol,
         price,
-        timestamp, // Unix timestamp (UTC, 초) — REST의 로컬 시각과 다름 주의 (스펙 §10-1)
+        timestamp, // Unix timestamp (UTC, 초) — REST의 로컬 시각과 다름 주의
         currency: tick.currency ?? tick.currency_quote ?? null, // 크립토/외환은 currency_quote
         exchange: tick.exchange ?? null,
         dayVolume: tick.day_volume ?? null,

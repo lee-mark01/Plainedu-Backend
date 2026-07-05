@@ -1,10 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const validate = require('../../middlewares/validate');
+const stockController = require('./stock.controller');
 const chartController = require('./chart.controller');
+const { searchStocksSchema } = require('./stock.validator');
 const { symbolParamsSchema, chartQuerySchema } = require('./chart.validator');
 
-// 종목 검색은 GET /api/community/stocks/search 가 이미 제공 (stock.service 공유)
+// 종목 검색 (Stocks 테이블 — 검색바용)
+router.get('/search', validate(searchStocksSchema, 'query'), stockController.searchStocks);
 
 // 시세 차트 (Twelve Data time_series + Redis 캐시)
 router.get(

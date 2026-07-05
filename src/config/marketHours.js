@@ -1,6 +1,6 @@
 // 미국 정규장(NYSE/NASDAQ) 개장 여부 판단
 // ET(America/New_York) 기준 월~금 09:30 ~ 16:00. 서머타임은 타임존 변환이 흡수.
-// 알려진 한계: 미국 공휴일 미반영 → TTL이 불필요하게 짧아지는 정도의 영향만 있음 (스펙 §10-6)
+// 알려진 한계: 미국 공휴일 미반영 → TTL이 불필요하게 짧아지는 정도의 영향만 있음 
 
 const ET_TIMEZONE = 'America/New_York';
 const OPEN_MINUTES = 9 * 60 + 30; // 09:30

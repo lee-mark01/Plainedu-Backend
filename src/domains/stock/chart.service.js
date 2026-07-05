@@ -5,7 +5,7 @@ const twelveDataClient = require('./twelvedata.client');
 const chartCache = require('./chart.cache');
 const AppError = require('../../errors/AppError');
 
-// Twelve Data 원본 → 프론트 계약 정규화 (스펙 §3)
+// Twelve Data 원본 → 프론트 계약 정규화-
 // - 원본 가격이 문자열이므로 숫자 변환 (소수 반올림은 프론트 담당)
 // - 요청은 ASC지만 방어적 재정렬 (datetime 문자열이 'YYYY-MM-DD[ HH:mm:ss]' 포맷이라 사전순 = 시간순)
 // - time 포맷은 Lightweight Charts 입력 규격에 맞춤:
@@ -37,7 +37,7 @@ const normalize = (raw) => {
   };
 };
 
-// 캐시본에서 마지막 N봉 슬라이스 + 구간 최고/최저 계산 (스펙 §3-4)
+// 캐시본에서 마지막 N봉 슬라이스 + 구간 최고/최저 계산 
 const buildResponse = (normalized, range, sliceCount) => {
   const candles = sliceCount
     ? normalized.candles.slice(-sliceCount)
@@ -67,7 +67,7 @@ const getCachedSeries = async (symbol, interval, outputsize) => {
 const getChart = async (symbol, range, before) => {
   const { interval, outputsize, slice } = RANGE_MAP[range];
 
-  // 과거 드래그 lazy 로딩: 분봉만 별도 구간 조회 (일봉 이상은 표준 수집량이 전체 커버, 스펙 §7)
+  // 과거 드래그 lazy 로딩: 분봉만 별도 구간 조회 (일봉 이상은 표준 수집량이 전체 커버)
   // before = 프론트가 보유한 가장 오래된 봉의 time(unix 초) 그대로.
   // 구간별 조회분은 캐시 키(chart:{sym}:{interval}) 오염 방지를 위해 캐싱하지 않는다.
   if (before) {
@@ -94,7 +94,7 @@ const getDailyCandles = async (symbol) => {
   return series.candles;
 };
 
-// 전일종가: ET 기준 오늘보다 이전 날짜의 마지막 일봉 close (스펙 §6)
+// 전일종가: ET 기준 오늘보다 이전 날짜의 마지막 일봉 close 
 // 장중 캐시에 오늘 봉이 아직 없어도(§10-5) 날짜 비교라 어제 종가를 정확히 집는다.
 const getPrevClose = async (symbol) => {
   const candles = await getDailyCandles(symbol);
@@ -105,7 +105,7 @@ const getPrevClose = async (symbol) => {
   return null;
 };
 
-// 현재가 + 등락액/등락률 (스펙 §6: /quote 폴링 없이 가진 재료로 계산)
+// 현재가 + 등락액/등락률 (quote 폴링 없이 가진 재료로 계산)
 // 현재가: 장중 = WS 틱(price:{symbol}) / 그 외 = 일봉 마지막 close
 const getQuote = async (symbol) => {
   const candles = await getDailyCandles(symbol);
