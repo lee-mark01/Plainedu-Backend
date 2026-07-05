@@ -52,14 +52,14 @@ Redis가 죽어 있어도 서버는 동작한다(캐시 없이 외부 API 직행
 ```
 
 **프론트 주의사항**
-- `time`은 거래소 로컬 시각 문자열(오프셋 없음) → `new Date()` 직접 파싱 금지, `timezone`과 함께 해석
+- `time` 포맷은 Lightweight Charts 입력 규격 그대로: 일봉 이상(`3M/1Y/5Y/ALL`) = `"YYYY-MM-DD"` 문자열, 분봉(`1D/1W`) = **unix 초(UTC)** → 둘 다 변환 없이 `setData()`에 바로 사용. 분봉 time은 Socket.IO 틱의 `timestamp`와 같은 기준
 - 소수 반올림(`toFixed(2)`)은 프론트 담당 — 백엔드는 원시 숫자 유지
 - 라인차트 = `close`, 캔들차트 = `open/high/low/close`. 양봉/음봉 색은 Lightweight Charts 기본 판단(종가>시가) 사용
 - `high`/`low`는 요청한 range 구간의 최고/최저 (헤더 라벨용)
 
 **과거 드래그 (lazy 로딩)** — `1D`/`1W`(분봉)만 지원:
-`GET /api/stocks/:symbol/chart?range=1D&before=2026-07-01 09:35:00`
-보유한 가장 오래된 봉의 `time`을 `before`로 넘기면 그 이전 구간을 반환(중복 봉 제거됨). 일봉 이상은 기본 응답이 전체 이력을 커버하므로 불필요.
+`GET /api/stocks/:symbol/chart?range=1D&before=1783026900`
+보유한 가장 오래된 봉의 `time`(unix 초)을 `before`로 그대로 넘기면 그 이전 구간을 반환(중복 봉 제거됨). 일봉 이상은 기본 응답이 전체 이력을 커버하므로 불필요.
 
 **에러**: 없는 심볼 `404` · 크레딧 소진 `429` · 제공사 오류 `502` · 제공사 연결 실패 `503`
 
@@ -110,7 +110,7 @@ socket.emit('subscribe', { symbol: 'AAPL' });
 | S→C | `price` | `{ symbol, price, change, changePercent, timestamp }` | 틱 (장중에만 발생) |
 | S→C | `resync` | `{ symbol }` | 업스트림 재연결 — 차트 REST 재조회 권장 |
 
-- `timestamp`는 Unix timestamp(UTC, 초). REST 봉의 로컬 시각과 기준이 다르므로 차트 축에 찍기 전 반드시 통일할 것 (스펙 §10-1)
+- `timestamp`는 unix 초(UTC) — 분봉 차트의 `time`과 같은 기준이라 변환 없이 그대로 사용 가능 (일봉 차트의 마지막 봉을 갱신할 때만 날짜 문자열로 바꿔서 사용)
 - 틱 수신 시: 헤더 숫자 갱신 + `series.update()`로 마지막 봉 갱신
 - 미국 주식은 장마감 시간에 틱이 없다 → 마지막 종가에서 정지가 정상 동작. 크립토/외환(`BTC/USD`, `EUR/USD`)은 24/7 틱 수신
 - 구독 가능 종목 = `REALTIME_SYMBOLS` 목록 (무료 플랜 한도로 6~8종목). Socket.IO의 `subscribe` 페이로드에는 인코딩 없이 `{ symbol: 'BTC/USD' }` 그대로 전달 (URL 인코딩은 REST 경로에만 해당)

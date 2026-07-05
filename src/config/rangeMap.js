@@ -16,8 +16,9 @@ const RANGE_MAP = {
 
 const RANGES = Object.keys(RANGE_MAP);
 
-// interval별 lazy 로딩(과거 드래그) 지원 여부 — 일봉 이상은 표준 수집량이 이미 전체를 커버 (스펙 §7)
-const LAZY_INTERVALS = new Set(['5min', '30min']);
+// 분봉 집합. 분봉만: lazy 로딩(과거 드래그) 지원 + UTC로 요청해 time을 unix 초로 변환
+// (일봉 이상은 표준 수집량이 전체를 커버하고, time이 날짜 문자열이라 그대로 차트에 꽂힘)
+const INTRADAY_INTERVALS = new Set(['5min', '30min']);
 
 // 장중 TTL(초): 신규 봉 생성 지점의 데이터 구멍 방지 목적 (스펙 §4)
 const OPEN_TTL = {
@@ -36,4 +37,4 @@ const getTtl = (interval, symbol) => {
   return isSymbolMarketOpen(symbol) ? OPEN_TTL[interval] : CLOSED_TTL;
 };
 
-module.exports = { RANGE_MAP, RANGES, LAZY_INTERVALS, getTtl };
+module.exports = { RANGE_MAP, RANGES, INTRADAY_INTERVALS, getTtl };

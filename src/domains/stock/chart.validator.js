@@ -12,14 +12,15 @@ const symbolParamsSchema = Joi.object({
 });
 
 // range enum은 rangeMap 키와 자동 동기화 (스펙 §8)
-// before: 분봉 lazy 로딩 기준점 — 보유한 가장 오래된 봉의 time 그대로 전달
+// before: 분봉 lazy 로딩 기준점 — 보유한 가장 오래된 봉의 time(unix 초) 그대로 전달
 const chartQuerySchema = Joi.object({
   range: Joi.string()
     .valid(...RANGES)
     .default('1D'),
-  before: Joi.string()
-    .pattern(/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/)
-    .messages({ 'string.pattern.base': 'before는 "YYYY-MM-DD" 또는 "YYYY-MM-DD HH:mm:ss" 형식이어야 합니다.' }),
+  before: Joi.number()
+    .integer()
+    .positive()
+    .messages({ 'number.base': 'before는 unix timestamp(초)여야 합니다.' }),
 });
 
 module.exports = { symbolParamsSchema, chartQuerySchema };

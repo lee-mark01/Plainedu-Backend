@@ -6,7 +6,7 @@ const wsGateway = require('./wsGateway');
 // Twelve Data WS ─(연결 1개)→ tickProcessor(price:{sym} 갱신 + 등락률) → Socket.IO 브로드캐스트
 
 // 무료 플랜 WS 한도 8종목 이내로 유지할 것
-const DEFAULT_SYMBOLS = 'AAPL,MSFT,NVDA,TSLA,GOOGL,AMZN';
+const DEFAULT_SYMBOLS = 'AAPL,BTC/USD,EUR/USD';
 
 let upstream = null;
 
