@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const authRepository = require('./auth.repository');
 const AppError = require('../../errors/AppError');
 const { signAccessToken, generateRefreshToken, hashToken } = require('../../utils/jwt');
+const accountService = require('../account/account.service');
 
 const providers = {
   kakao: require('./providers/kakao'),
@@ -43,6 +44,10 @@ const oauthLogin = async (provider, code, { ipAddress, userAgent, state }) => {
     user = await authRepository.findUserById(userId);
     isNew = true;
   }
+
+  // 개인 계좌는 가입 시점뿐 아니라 매 로그인마다 보장한다 (이미 있으면 조회 한 번뿐이라 저렴하고,
+  // 가입 직후 계좌 생성이 실패해도 다음 로그인에서 복구됨)
+  await accountService.getOrCreateIndividualAccount(user.id);
 
   const accessToken = signAccessToken({ userId: user.id, role: user.role });
   const refreshToken = generateRefreshToken();

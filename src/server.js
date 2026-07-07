@@ -5,12 +5,14 @@ const app = require('./app');
 const redis = require('./config/redis');
 const tokenCleanup = require('./jobs/tokenCleanup');
 const marketData = require('./marketData');
+const matchingService = require('./domains/trading/matching.service');
 
 const PORT = process.env.PORT || 3000;
 
 // Socket.IO를 같은 포트에 붙이기 위해 http 서버를 직접 생성
 const server = http.createServer(app);
 marketData.start(server);
+marketData.onPriceUpdate((symbol, price) => matchingService.handlePriceUpdate(symbol, price));
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

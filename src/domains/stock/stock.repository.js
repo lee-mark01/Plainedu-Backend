@@ -17,4 +17,12 @@ const search = async (keyword, limit) => {
     return rows;
 };
 
-module.exports = { search };
+const findByCode = async (stock_code) => {
+    const [rows] = await pool.query(
+        'SELECT stock_code, name, market, currency, status FROM Stocks WHERE stock_code = ?',
+        [stock_code]
+    );
+    return rows[0] || null;
+};
+
+module.exports = { search, findByCode };
