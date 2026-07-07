@@ -1,18 +1,24 @@
 const pool = require('../../config/db');
 
 // 학교 목록 배치 upsert
-// (school_name, region) UNIQUE 키 기준으로 중복 무시 → 동기화 재실행 시 안전
-// @returns {number} 새로 삽입된 행 수
-const bulkUpsertSchools = async (schools) => {
+// (school_name, region) UNIQUE 키 기준 upsert → 동기화 재실행 시 안전
+// gubun에서 파생된 school_group은 항상 최신값으로 덮어써서, 이름 휴리스틱으로 백필된 값도 다음 동기화 때 정정된다.
+// @returns {number} 새로 삽입/갱신된 행 수
+const bulkUpsertSchools = async (schools, schoolGroup = null) => {
   if (!schools.length) return 0;
 
-  const values = schools.map((s) => [s.schoolName, s.region]);
-  // INSERT IGNORE: 이미 존재하는 (school_name, region)은 건너뜀
+  const values = schools.map((s) => [s.schoolName, s.region, schoolGroup]);
   const [result] = await pool.query(
-    'INSERT IGNORE INTO schools (school_name, region) VALUES ?',
+    `INSERT INTO schools (school_name, region, school_group) VALUES ?
+     ON DUPLICATE KEY UPDATE school_group = VALUES(school_group)`,
     [values]
   );
   return result.affectedRows;
+};
+
+const findById = async (id) => {
+  const [rows] = await pool.query('SELECT id, school_name, region, school_group FROM schools WHERE id = ?', [id]);
+  return rows[0] || null;
 };
 
 const countSchools = async () => {
@@ -44,4 +50,4 @@ const searchSchools = async ({ keyword, region, limit }) => {
   return rows;
 };
 
-module.exports = { bulkUpsertSchools, countSchools, searchSchools };
+module.exports = { bulkUpsertSchools, countSchools, searchSchools, findById };

@@ -5,6 +5,11 @@
 --
 -- 변경 이력:
 -- 2026-04-30: 초기 스키마 + 대댓글(parent_id), 스크랩(PostBookmarks), 알림 COMMENT_REPLY 추가
+-- 2026-07-03: Stocks 한국장 → 미국장 전환 (market ENUM, currency 컬럼 추가)
+-- 2026-07-06: schools.school_group 추가, VirtualAccounts.school_group nullable로 완화
+--
+-- 주의: db-migrate 도입 이후 실제 스키마 변경은 db/migrations/에서 관리된다.
+-- 이 파일은 사람이 읽기 위한 스냅샷이며, 마이그레이션 반영 후 수동으로 최신화한다.
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -19,6 +24,7 @@ CREATE TABLE IF NOT EXISTS schools (
   id            INT          NOT NULL AUTO_INCREMENT,
   school_name   VARCHAR(100) NOT NULL,
   region        VARCHAR(50)  NULL,
+  school_group  ENUM('HIGH_SCHOOL','UNIVERSITY') NULL,       -- 커리어넷 gubun(high_list/univ_list) 기반, 미동기화 시 NULL
   created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   -- (school_name, region) 유일: 커리어넷 동기화 재실행 시 중복 방지 (upsert 키)
@@ -329,7 +335,8 @@ CREATE TABLE IF NOT EXISTS PortfolioVotes (
 CREATE TABLE IF NOT EXISTS Stocks (
   stock_code  VARCHAR(20)  NOT NULL,
   name        VARCHAR(100) NOT NULL,
-  market      ENUM('KOSPI','KOSDAQ') NOT NULL,
+  market      ENUM('NASDAQ','NYSE') NOT NULL,
+  currency    VARCHAR(10)  NOT NULL DEFAULT 'USD',
   status      ENUM('ACTIVE','SUSPENDED','DELISTED') NOT NULL DEFAULT 'ACTIVE',
   updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (stock_code),
@@ -354,7 +361,7 @@ CREATE TABLE IF NOT EXISTS Seasons (
 CREATE TABLE IF NOT EXISTS VirtualAccounts (
   id                  INT            NOT NULL AUTO_INCREMENT,
   account_type        ENUM('INDIVIDUAL','TEAM') NOT NULL,
-  school_group        ENUM('HIGH_SCHOOL','UNIVERSITY') NOT NULL,
+  school_group        ENUM('HIGH_SCHOOL','UNIVERSITY') NULL,  -- 가입 시점엔 학교인증 전일 수 있어 NULL 허용
   user_id             INT            NULL,
   team_id             INT            NULL,
   season_id           INT            NOT NULL,

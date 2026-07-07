@@ -8,6 +8,9 @@ const MAX_PAGES = 200;     // 안전장치 (무한 루프 방지)
 // 앱에서 사용하는 기본 대상: 고등학교 + 대학
 const DEFAULT_GUBUNS = ['high_list', 'univ_list'];
 
+// gubun → VirtualAccounts.school_group 매핑 (초/중등은 동기화 대상이 아니라 매핑 없음)
+const GUBUN_TO_SCHOOL_GROUP = { high_list: 'HIGH_SCHOOL', univ_list: 'UNIVERSITY' };
+
 // 특정 학교 구분(gubun) 전체 페이지를 순회하며 schools 테이블에 저장
 const syncGubun = async (gubun) => {
   let page = 1;
@@ -20,7 +23,7 @@ const syncGubun = async (gubun) => {
     if (page === 1) totalCount = total;
     if (schools.length === 0) break;
 
-    inserted += await schoolRepository.bulkUpsertSchools(schools);
+    inserted += await schoolRepository.bulkUpsertSchools(schools, GUBUN_TO_SCHOOL_GROUP[gubun] ?? null);
     fetched += schools.length;
 
     if (fetched >= totalCount) break;

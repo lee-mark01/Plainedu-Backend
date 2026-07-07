@@ -1,6 +1,7 @@
 const AppError = require('../../errors/AppError');
 const teamRepository = require('./team.repository');
 const userRepository = require('../user/user.repository');
+const accountService = require('../account/account.service');
 
 const createTeam = async (user_id, name, max_member_count) => {
   const user = await userRepository.findById(user_id);
@@ -14,6 +15,7 @@ const createTeam = async (user_id, name, max_member_count) => {
   }
 
   const team_id = await teamRepository.createTeamWithLeader(user.school_id, name, max_member_count, user_id);
+  await accountService.getOrCreateTeamAccount(team_id, user.school_id);
   const team = await teamRepository.findById(team_id);
   const members = await teamRepository.findMembersByTeamId(team_id);
   return { ...team, members };

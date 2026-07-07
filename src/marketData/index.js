@@ -1,20 +1,20 @@
 const { createUpstream } = require('./wsUpstream');
 const tickProcessor = require('./tickProcessor');
 const wsGateway = require('./wsGateway');
+const { getRealtimeSymbols } = require('../config/realtimeSymbols');
 
-// 실시간 시세 파이프라인 조립 
-// Twelve Data WS ─(연결 1개)→ tickProcessor(price:{sym} 갱신 + 등락률) → Socket.IO 브로드캐스트
+// 실시간 시세 파이프라인 조립
+// Twelve Data WS ─(연결 1개)→ tickProcessor(price:{sym} 갱신 + 등락률) → Socket.IO 브로드캐스트 → priceUpdate 리스너
 
 // 무료 플랜 WS 한도 8종목 이내로 유지할 것
-const DEFAULT_SYMBOLS = 'AAPL,BTC/USD,EUR/USD';
+const getSymbols = getRealtimeSymbols;
 
 let upstream = null;
 
-const getSymbols = () =>
-  (process.env.REALTIME_SYMBOLS || DEFAULT_SYMBOLS)
-    .split(',')
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
+// marketData는 src/domains/를 직접 require하지 않는다.
+// 관심 있는 도메인(예: trading)은 여기 등록해두고, 매 틱마다 (symbol, price)로 호출받는다.
+const priceListeners = new Set();
+const onPriceUpdate = (handler) => priceListeners.add(handler);
 
 const start = (httpServer) => {
   const symbols = getSymbols();
@@ -33,6 +33,13 @@ const start = (httpServer) => {
       try {
         const payload = await tickProcessor.processTick(tick);
         wsGateway.broadcastTick(payload);
+        for (const listener of priceListeners) {
+          try {
+            await listener(payload.symbol, payload.price);
+          } catch (err) {
+            console.error('[marketData] priceUpdate 리스너 실패:', err.message);
+          }
+        }
       } catch (err) {
         console.error('[marketData] 틱 처리 실패:', err.message);
       }
@@ -48,4 +55,4 @@ const stop = () => {
   wsGateway.close();
 };
 
-module.exports = { start, stop };
+module.exports = { start, stop, onPriceUpdate };
