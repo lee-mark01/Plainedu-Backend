@@ -53,14 +53,28 @@ const buildResponse = (normalized, range, sliceCount) => {
 };
 
 // cache-aside: 캐시 미스 시에만 외부 API 호출 (interval당 1크레딧)
+// 같은 키를 동시에 미스한 요청들은 한 번의 API 호출을 공유한다 (캐시 스탬피드 → 크레딧 낭비 방지)
+// 실패는 전원에게 그대로 전파되고 엔트리가 지워지므로 다음 요청이 재시도한다
+const inflightFetch = new Map(); // `${symbol}:${interval}` → Promise
+
 const getCachedSeries = async (symbol, interval, outputsize) => {
-  let series = await chartCache.get(symbol, interval);
-  if (!series) {
-    const raw = await twelveDataClient.fetchTimeSeries({ symbol, interval, outputsize });
-    series = normalize(raw);
-    await chartCache.set(symbol, interval, series, getTtl(interval, symbol));
+  const cached = await chartCache.get(symbol, interval);
+  if (cached) return cached;
+
+  const key = `${symbol}:${interval}`;
+  let pending = inflightFetch.get(key);
+  if (!pending) {
+    pending = twelveDataClient
+      .fetchTimeSeries({ symbol, interval, outputsize })
+      .then(async (raw) => {
+        const series = normalize(raw);
+        await chartCache.set(symbol, interval, series, getTtl(interval, symbol));
+        return series;
+      })
+      .finally(() => inflightFetch.delete(key));
+    inflightFetch.set(key, pending);
   }
-  return series;
+  return pending;
 };
 
 // GET /api/stocks/:symbol/chart?range=&before=
