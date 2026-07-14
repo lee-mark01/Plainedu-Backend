@@ -7,4 +7,15 @@ const searchStocksSchema = Joi.object({
   limit: Joi.number().integer().min(1).max(50).default(20),
 });
 
-module.exports = { searchStocksSchema };
+// POST /api/stocks/watchlist — body { stock_code }
+const watchlistBodySchema = Joi.object({
+  stock_code: Joi.string().trim().uppercase().max(20).required()
+    .messages({ 'any.required': '종목 코드(stock_code)를 입력해주세요.' }),
+});
+
+// DELETE /api/stocks/watchlist/:stock_code
+const watchlistParamsSchema = Joi.object({
+  stock_code: Joi.string().trim().uppercase().max(20).required(),
+});
+
+module.exports = { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema };

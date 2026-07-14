@@ -25,4 +25,30 @@ const findByCode = async (stock_code) => {
     return rows[0] || null;
 };
 
-module.exports = { search, findByCode };
+// --- 관심종목 (Watchlist) ---
+
+const findWatchlistByUser = async (user_id) => {
+    const [rows] = await pool.query(
+        `SELECT w.stock_code, s.name, s.market, w.created_at
+         FROM Watchlist w
+         JOIN Stocks s ON s.stock_code = w.stock_code
+         WHERE w.user_id = ?
+         ORDER BY w.created_at DESC`,
+        [user_id]
+    );
+    return rows;
+};
+
+const addWatchlist = async (user_id, stock_code) => {
+    await pool.query('INSERT INTO Watchlist (user_id, stock_code) VALUES (?, ?)', [user_id, stock_code]);
+};
+
+const removeWatchlist = async (user_id, stock_code) => {
+    const [result] = await pool.query('DELETE FROM Watchlist WHERE user_id = ? AND stock_code = ?', [
+        user_id,
+        stock_code,
+    ]);
+    return result.affectedRows;
+};
+
+module.exports = { search, findByCode, findWatchlistByUser, addWatchlist, removeWatchlist };
