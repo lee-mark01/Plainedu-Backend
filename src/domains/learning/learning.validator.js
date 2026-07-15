@@ -28,18 +28,6 @@ const quizIdSchema = Joi.object({
 });
 
 /**
- * 월별 출석 조회 쿼리 파라미터 검증
- * query: ?year=2026&month=5
- *
- * year/month는 둘 다 있거나 둘 다 없어야 한다 (.and()).
- * 한쪽만 보내면 의도가 모호해 거부.
- */
-const attendanceQuerySchema = Joi.object({
-  year: Joi.number().integer().min(2020).max(2100).optional(),
-  month: Joi.number().integer().min(1).max(12).optional(),
-}).and('year', 'month');
-
-/**
  * path 파라미터: topicId
  */
 const topicIdSchema = Joi.object({
@@ -64,7 +52,6 @@ const topicsQuerySchema = Joi.object({
 module.exports = {
   quizAnswerSchema,
   quizIdSchema,
-  attendanceQuerySchema,
   topicIdSchema,
   shortformIdSchema,
   topicsQuerySchema,

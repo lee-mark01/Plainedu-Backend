@@ -129,56 +129,6 @@ const completeQuiz = async (req, res, next) => {
   }
 };
 
-// 8-1. 출석 체크인 (학습 메인 진입 또는 명시적 트리거)
-const checkIn = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    await learningService.checkAndRecordAttendance(userId);
-
-    res.status(200).json({
-      success: true,
-      message: '출석 처리되었습니다.',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 8-2. 최근 7일 출석 + 연속학습일 (칭찬 화면용)
-const getStreak = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const result = await learningService.getAttendanceStreak(userId);
-
-    res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// 8. 월별 출석 조회
-const getAttendance = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { year, month } = req.query;
-    const result = await learningService.getMonthlyAttendance(
-      userId,
-      Number(year) || new Date().getFullYear(),
-      Number(month) || new Date().getMonth() + 1
-    );
-
-    res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   getTopics,
   getShortforms,
@@ -188,7 +138,4 @@ module.exports = {
   getQuizzes,
   submitQuizAnswer,
   completeQuiz,
-  getAttendance,
-  getStreak,
-  checkIn,
 };
