@@ -6,7 +6,6 @@ const validate = require('../../middlewares/validate');
 const {
   quizAnswerSchema,
   quizIdSchema,
-  attendanceQuerySchema,
   topicIdSchema,
   shortformIdSchema,
   topicsQuerySchema,
@@ -70,19 +69,6 @@ router.post(
   '/topics/:topicId/quizzes/complete',
   validate(topicIdSchema, 'params'),
   learningController.completeQuiz
-);
-
-// 8-1. 출석 체크인 (학습 메인 진입 또는 명시적 트리거)
-router.post('/attendance/check-in', learningController.checkIn);
-
-// 8-2. 최근 7일 출석 + 연속학습일 (칭찬 화면용)
-router.get('/attendance/streak', learningController.getStreak);
-
-// 8. 월별 출석 조회
-router.get(
-  '/attendance',
-  validate(attendanceQuerySchema, 'query'),
-  learningController.getAttendance
 );
 
 module.exports = router;

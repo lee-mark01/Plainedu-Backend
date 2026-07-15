@@ -1,6 +1,7 @@
 const learningRepository = require('./learning.repository');
 const { withTransaction } = require('../../config/db');
 const AppError = require('../../errors/AppError');
+const attendanceService = require('../user/attendance.service');
 
 // =============================================================================
 // 1. 학습 메인 (주제 목록 + 진행현황 + 오늘의 플로우 + 레벨)
@@ -12,7 +13,7 @@ const getTopicsWithProgress = async (userId, levelNumber) => {
   // 독립적인 세 쿼리를 병렬 실행.
   const [topics, learningDays, todayFlow] = await Promise.all([
     learningRepository.findAllTopicsWithProgress(userId, levelNumber),
-    learningRepository.findTotalLearningDays(userId),
+    attendanceService.getLearningDaysSummary(userId),
     learningRepository.findTodayFlowSummary(userId),
   ]);
 
@@ -22,7 +23,7 @@ const getTopicsWithProgress = async (userId, levelNumber) => {
   // 오늘 완료한 단계 수 = step1_done + step2_done (+ step3는 미구현 = 0)
   const completedStepsToday = Number(todayFlow.step1_done) + Number(todayFlow.step2_done);
 
-  // 출석은 명시적인 POST /attendance/check-in 으로 분리됨 (GET에 부수 효과 제거).
+  // 출석은 user 도메인의 POST /api/users/attendance/check-in 으로 분리됨 (GET에 부수 효과 제거, 학습 진입과 무관하게 앱 접속 시 트리거).
 
   return {
     levelNumber,
@@ -244,63 +245,6 @@ const completeQuizSession = async (userId, topicId) => {
 };
 
 // =============================================================================
-// 8. 월별 출석 조회
-// =============================================================================
-
-/**
- * 최근 7일(오늘 포함) 출석 체크리스트 + 연속학습일.
- * 칭찬 화면(퀴즈 완료 후 등)에서 호출.
- */
-const getAttendanceStreak = async (userId) => {
-  const [weekly, globalLatest] = await Promise.all([
-    learningRepository.findWeeklyAttendance(userId),
-    learningRepository.findLatestAttendance(userId),
-  ]);
-
-  // DB 결과를 Set으로 변환해 O(1) 조회 가능하게.
-  // attendance_date가 mysql2 기본 설정에서 JS Date 객체로 오므로 'YYYY-MM-DD' 문자열로 정규화.
-  const attendedSet = new Set(weekly.map((r) => formatDate(r.attendance_date)));
-
-  // 오늘부터 -6일까지 7개 슬롯 생성.
-  // 날짜는 MySQL 서버 기준이 아닌 JS 기준이라 timezone 이슈 약간 있음.
-  // 정확도가 필요해지면 SQL에서 날짜 시리즈를 만들도록 보강.
-  const today = new Date();
-  const weeklyChecklist = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = formatDate(d);
-    weeklyChecklist.push({ date: dateStr, attended: attendedSet.has(dateStr) });
-  }
-
-  return {
-    consecutiveDays: globalLatest?.consecutive_days || 0,
-    totalLearningDays: globalLatest?.total_learning_days || 0,
-    weeklyChecklist,
-  };
-};
-
-const getMonthlyAttendance = async (userId, year, month) => {
-  const attendances = await learningRepository.findMonthlyAttendance(userId, year, month);
-
-  // 해당 월의 출석 날짜 목록
-  const attendanceDates = attendances.map((a) => a.attendance_date);
-
-  // 연속/총 학습일은 조회 중인 월과 무관하게 "유저의 현재 누적 상태"를 보여준다.
-  // → 사용자가 과거 월을 보더라도 화면 상단에는 '지금 기준'의 카운트를 노출.
-  const globalLatest = await learningRepository.findLatestAttendance(userId);
-
-  return {
-    year,
-    month,
-    attendanceDates,
-    totalDays: attendances.length,
-    consecutiveDays: globalLatest?.consecutive_days || 0,
-    totalLearningDays: globalLatest?.total_learning_days || 0,
-  };
-};
-
-// =============================================================================
 // 내부 헬퍼 함수
 // =============================================================================
 
@@ -345,20 +289,6 @@ const gradeAnswer = (type, answerData, userAnswer) => {
 };
 
 /**
- * Date 객체 또는 'YYYY-MM-DD ...' 문자열을 'YYYY-MM-DD'로 정규화.
- * mysql2가 DATE를 JS Date로 변환하기도 하고 string으로 주기도 해서 양쪽 처리.
- */
-const formatDate = (value) => {
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).slice(0, 10);
-};
-
-/**
  * 점수별 메시지
  */
 const getScoreMessage = (score) => {
@@ -380,40 +310,6 @@ const calculateLevel = (totalLearningDays) => {
   return 1;
 };
 
-/**
- * 출석 체크 및 기록 (학습 메인 진입 시 호출)
- */
-const checkAndRecordAttendance = async (userId) => {
-  // 조회 + 삽입을 하나의 트랜잭션으로 묶음.
-  // 동시 요청 race는 insertAttendance의 ON DUPLICATE KEY UPDATE로 흡수된다
-  // (한쪽은 정상 INSERT, 다른 쪽은 last_active_date만 갱신).
-  await withTransaction(async (conn) => {
-    // 오늘 이미 출석했으면 스킵
-    const todayRecord = await learningRepository.findTodayAttendance(userId, conn);
-    if (todayRecord) return;
-
-    // 최근 출석 기록에서 연속일 계산
-    const latest = await learningRepository.findLatestAttendance(userId, conn);
-
-    let consecutiveDays = 1;
-    let totalLearningDays = 1;
-
-    if (latest) {
-      totalLearningDays = latest.total_learning_days + 1;
-
-      // MySQL 서버 기준 DATEDIFF(CURDATE(), attendance_date) 결과를 사용.
-      // JS Date로 계산하면 timezone/시각 변환에서 어긋날 수 있음.
-      if (latest.days_since_last === 1) {
-        consecutiveDays = latest.consecutive_days + 1;
-      }
-      // days_since_last > 1이면 연속 끊김 → consecutiveDays = 1 (이미 초기값)
-      // days_since_last === 0은 위 findTodayAttendance에서 이미 early return 되므로 도달 X
-    }
-
-    await learningRepository.insertAttendance(userId, consecutiveDays, totalLearningDays, conn);
-  });
-};
-
 module.exports = {
   getTopicsWithProgress,
   getShortformsByTopic,
@@ -423,7 +319,4 @@ module.exports = {
   getQuizzesByTopic,
   submitQuizAnswer,
   completeQuizSession,
-  getMonthlyAttendance,
-  getAttendanceStreak,
-  checkAndRecordAttendance,
 };
