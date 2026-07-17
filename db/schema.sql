@@ -7,6 +7,8 @@
 -- 2026-04-30: 초기 스키마 + 대댓글(parent_id), 스크랩(PostBookmarks), 알림 COMMENT_REPLY 추가
 -- 2026-07-03: Stocks 한국장 → 미국장 전환 (market ENUM, currency 컬럼 추가)
 -- 2026-07-06: schools.school_group 추가, VirtualAccounts.school_group nullable로 완화
+-- 2026-07-17: Portfolios 확장 (DRAFT/ARCHIVED 상태, description/analysis/type/parent_id 추가),
+--             PortfolioAllocations.reason 추가, TradeProposals/TradeProposalVotes 신규 테이블
 --
 -- 주의: db-migrate 도입 이후 실제 스키마 변경은 db/migrations/에서 관리된다.
 -- 이 파일은 사람이 읽기 위한 스냅샷이며, 마이그레이션 반영 후 수동으로 최신화한다.
@@ -266,11 +268,15 @@ CREATE TABLE IF NOT EXISTS TeamMembers (
 CREATE TABLE IF NOT EXISTS Portfolios (
   id              INT          NOT NULL AUTO_INCREMENT,
   team_id         INT          NOT NULL,
+  type            ENUM('NEW','REVISION') NOT NULL DEFAULT 'NEW',
+  parent_id       INT          NULL,
   proposed_by     INT          NOT NULL,
   title           VARCHAR(100) NOT NULL,
+  description     TEXT         NULL,
+  analysis        TEXT         NULL,
   approval_count  INT          NOT NULL DEFAULT 0,
   rejection_count INT          NOT NULL DEFAULT 0,
-  status          ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+  status          ENUM('DRAFT','PENDING','APPROVED','REJECTED','ARCHIVED') NOT NULL DEFAULT 'DRAFT',
   created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   INDEX idx_portfolio_team_status (team_id, status),
@@ -304,6 +310,7 @@ CREATE TABLE IF NOT EXISTS PortfolioAllocations (
   portfolio_id      INT           NOT NULL,
   stock_code        VARCHAR(20)   NOT NULL,
   target_percentage DECIMAL(5,2)  NOT NULL,
+  reason            TEXT          NULL,
   PRIMARY KEY (id),
   INDEX idx_pa_portfolio (portfolio_id),
   INDEX idx_pa_stock (stock_code),
@@ -324,6 +331,49 @@ CREATE TABLE IF NOT EXISTS PortfolioVotes (
   CONSTRAINT fk_pv_portfolio
     FOREIGN KEY (portfolio_id) REFERENCES Portfolios(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_pv_voter
+    FOREIGN KEY (voter_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3-7. TradeProposals (매매 제안)
+CREATE TABLE IF NOT EXISTS TradeProposals (
+  id               INT           NOT NULL AUTO_INCREMENT,
+  team_id          INT           NOT NULL,
+  proposed_by      INT           NOT NULL,
+  stock_code       VARCHAR(20)   NOT NULL,
+  order_type       ENUM('BUY','SELL') NOT NULL,
+  quantity         INT           NOT NULL,
+  target_price     DECIMAL(18,2) NOT NULL,
+  rationale        TEXT          NOT NULL,
+  market_analysis  TEXT          NULL,
+  risk_analysis    TEXT          NULL,
+  approval_count   INT           NOT NULL DEFAULT 0,
+  rejection_count  INT           NOT NULL DEFAULT 0,
+  status           ENUM('PENDING','APPROVED','REJECTED','EXECUTED') NOT NULL DEFAULT 'PENDING',
+  created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  INDEX idx_tp_team_status (team_id, status),
+  INDEX idx_tp_proposer (proposed_by),
+  CONSTRAINT fk_tp_team
+    FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tp_proposer
+    FOREIGN KEY (proposed_by) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tp_stock
+    FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3-8. TradeProposalVotes (매매 제안 투표)
+CREATE TABLE IF NOT EXISTS TradeProposalVotes (
+  id           INT       NOT NULL AUTO_INCREMENT,
+  proposal_id  INT       NOT NULL,
+  voter_id     INT       NOT NULL,
+  is_approved  BOOLEAN   NOT NULL,
+  created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_tpv_proposal_voter (proposal_id, voter_id),
+  INDEX idx_tpv_voter (voter_id),
+  CONSTRAINT fk_tpv_proposal
+    FOREIGN KEY (proposal_id) REFERENCES TradeProposals(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tpv_voter
     FOREIGN KEY (voter_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

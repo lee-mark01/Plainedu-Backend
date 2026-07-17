@@ -14,6 +14,7 @@ const rankingRouter = require('./domains/ranking/ranking.router');
 const communityRouter = require('./domains/community/community.router');
 const schoolRouter = require('./domains/school/school.router');
 const stockRouter = require('./domains/stock/stock.router');
+const portfolioRouter = require('./domains/portfolio/portfolio.router');
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/ranking', rankingRouter);
 app.use('/api/community', communityRouter);
 app.use('/api/schools', schoolRouter);
 app.use('/api/stocks', stockRouter);
+app.use('/api/portfolios', portfolioRouter);
 
 // 헬스체크
 app.get('/api/health', (req, res) => {

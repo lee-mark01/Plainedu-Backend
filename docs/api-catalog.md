@@ -3,7 +3,7 @@
 > **이 문서는 "현재 코드에 실제로 존재하는 API"의 단일 목록이다.**
 > 유지 규칙: **API를 추가/변경/삭제한 사람이 같은 PR에서 이 문서의 해당 도메인 표를 갱신한다.** (PR 체크리스트에 포함 권장)
 > 용도: 팀원 간 API 파악 · Postman 컬렉션 시드 · 추후 Swagger(OpenAPI) 작성의 원본.
-> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-07-12
+> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-07-17
 
 ## 공통 규칙
 
@@ -114,6 +114,26 @@
 
 `/me`는 Phase 0 범위. 팀 계좌 조회·자산 추이·시즌 정보는 아래 [구현 필요 백로그](#구현-필요-백로그-코드에-없는-api) 참조.
 
+## portfolio — 모델포트폴리오 (`/api/portfolios`)
+
+상세: [docs/portfolio-api.md](portfolio-api.md) — MP 생명주기·Alignment 공식·에러 코드 포함
+
+| Method | Path | 인증 | 설명 |
+|---|---|---|---|
+| GET | `/api/portfolios` | 🔒 | MP 홈 (Active + Draft + Pending + Archived 분류) |
+| GET | `/api/portfolios/active` | 🔒 | Active MP 상세 + 목표 vs 현재 비중 + 전략 준수도(Alignment) |
+| POST | `/api/portfolios` | 🔒 | 새 MP 작성 (Draft 저장 or 바로 PENDING 제출). body에 allocations·title·description 등 |
+| GET | `/api/portfolios/:id` | 🔒 | MP 상세 (allocations + votes 포함) |
+| PUT | `/api/portfolios/:id` | 🔒 | Draft MP 수정 (본인·DRAFT만) |
+| DELETE | `/api/portfolios/:id` | 🔒 | Draft MP 삭제 (본인·DRAFT만) |
+| POST | `/api/portfolios/:id/submit` | 🔒 | Draft → PENDING 제출 (title·description·allocations 100% 필수) |
+| POST | `/api/portfolios/:id/votes` | 🔒 | MP 투표. body `{ is_approved }` — 과반수 시 자동 가결/부결 |
+| GET | `/api/portfolios/:id/votes` | 🔒 | 투표 현황 (투표자 목록 포함) |
+| GET | `/api/portfolios/trade-proposals?status=` | 🔒 | 매매 제안 목록 (status 필터 선택) |
+| POST | `/api/portfolios/trade-proposals` | 🔒 | 매매 제안 작성. body `{ stock_code, order_type, quantity, target_price, rationale, ... }` |
+| GET | `/api/portfolios/trade-proposals/:id` | 🔒 | 매매 제안 상세 (votes 포함) |
+| POST | `/api/portfolios/trade-proposals/:id/votes` | 🔒 | 매매 제안 투표. body `{ is_approved }` — 과반수 시 자동 확정 |
+
 ## ranking — 랭킹 (`/api/ranking`) — **미구현 (예정)**
 
 상세: [specs/spec-ranking.md](specs/spec-ranking.md) §8. 예정 목록: `GET /individual` · `/teams` · `/schools?mode=` · `/me`
@@ -146,7 +166,7 @@
 |---|---|---|
 | `GET /api/ranking/individual` `/teams` `/schools?mode=` `/me` | ranking | [spec-ranking §8](specs/spec-ranking.md) — Phase 3 |
 | 팀 계좌 **주문** 지원 (기존 POST orders 확장) | trading | 체결 담당. 팀 랭킹 R% 재료 — 현재 개인계좌만 지원 |
-| MP(모델 포트폴리오) 설정/조회, CurrentWeight, Alignment | portfolio | 포트폴리오 담당 작업 중 — valuation 소비 합의됨 |
+| ~~MP(모델 포트폴리오) 설정/조회, CurrentWeight, Alignment~~ | ~~portfolio~~ | ✅ **구현 완료** (2026-07-17) — [docs/portfolio-api.md](portfolio-api.md) |
 | 메인홈 집계 (기존 API 조합 or 별도 엔드포인트) | 미정 | plan 백로그 — 프론트와 협의 |
 | `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 일일 스냅샷 잡이 수행(기록 함수는 account 소유, Task 8에서 호출 배선) → Task 8 이후. 순위 추이(DailyRankings)는 별개로 ranking 소유. 노출 화면 범위는 기획 확인 중 (2026-07-12) |
 | `GET /api/ranking/season` — 현재 시즌 기간/D-day | ranking | 리그 페이지 시즌 표시 (2026-07-12 확정: 조회는 ranking, 시즌 생성/수명주기는 account.service 유지). Phase 3에서 함께 구현 |
