@@ -2,6 +2,7 @@
 // marketData가 새 가격을 받을 때마다(server.js가 marketData.onPriceUpdate로 연결) 호출된다.
 const pool = require('../../config/db');
 const tradingRepository = require('./trading.repository');
+const { checkCrosses } = require('./matching.calculator');
 
 const tryFillOrder = async (orderId, currentPrice) => {
   const conn = await pool.getConnection();
@@ -15,10 +16,11 @@ const tryFillOrder = async (orderId, currentPrice) => {
       return;
     }
 
-    const crosses =
-      order.order_type === 'BUY'
-        ? currentPrice <= Number(order.order_price)
-        : currentPrice >= Number(order.order_price);
+    const crosses = checkCrosses({
+      orderType: order.order_type,
+      orderPrice: Number(order.order_price),
+      currentPrice,
+    });
 
     if (!crosses) {
       await conn.commit(); // 가격이 다시 멀어짐 — PENDING 유지

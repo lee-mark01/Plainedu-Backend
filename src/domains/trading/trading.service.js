@@ -5,6 +5,7 @@ const accountService = require('../account/account.service');
 const stockRepository = require('../stock/stock.repository');
 const chartService = require('../stock/chart.service');
 const { getRealtimeSymbols } = require('../../config/realtimeSymbols');
+const { checkCrosses } = require('./matching.calculator');
 
 // 지정가 주문은 틱이 실제로 들어오는 종목에서만 체결을 기대할 수 있다 (REALTIME_SYMBOLS 밖은 영원히 PENDING).
 // 시장가는 REST 폴백이 있는 chartService.getQuote()로 즉시 체결하므로 이 제약이 없다.
@@ -44,7 +45,7 @@ const placeOrder = async (userId, { stock_code, order_type, price_type, order_qu
     if (price_type === 'MARKET') {
       result = await tradingRepository.executeFill(conn, order, quote.price, order_quantity);
     } else {
-      const crosses = order_type === 'BUY' ? quote.price <= order_price : quote.price >= order_price;
+      const crosses = checkCrosses({ orderType: order_type, orderPrice: order_price, currentPrice: quote.price });
       result = crosses
         ? await tradingRepository.executeFill(conn, order, order_price, order_quantity) // 크로스 시 지정가로 체결
         : { filled: false, reason: null }; // 아직 크로스 안 됨 → PENDING 유지 (거부 아님)
