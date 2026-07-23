@@ -467,6 +467,7 @@ CREATE TABLE IF NOT EXISTS AccountHoldings (
 CREATE TABLE IF NOT EXISTS Orders (
   id                 INT            NOT NULL AUTO_INCREMENT,
   account_id         INT            NOT NULL,
+  proposal_id        INT            NULL,  -- 팀 주문이 참고한 매매 제안 (느슨한 참조 — 값 일치 강제 없음)
   trader_id          INT            NOT NULL,
   stock_code         VARCHAR(20)    NOT NULL,
   order_type         ENUM('BUY','SELL') NOT NULL,
@@ -484,6 +485,8 @@ CREATE TABLE IF NOT EXISTS Orders (
   INDEX idx_orders_stock (stock_code),
   CONSTRAINT fk_orders_account
     FOREIGN KEY (account_id) REFERENCES VirtualAccounts(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_orders_proposal
+    FOREIGN KEY (proposal_id) REFERENCES TradeProposals(id) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_orders_trader
     FOREIGN KEY (trader_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_orders_stock

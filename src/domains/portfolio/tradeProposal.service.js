@@ -2,14 +2,7 @@ const pool = require('../../config/db');
 const AppError = require('../../errors/AppError');
 const tradeProposalRepository = require('./tradeProposal.repository');
 const teamRepository = require('../team/team.repository');
-
-// ── 팀 멤버십 검증 헬퍼 ──
-
-const requireTeamMembership = async (userId) => {
-  const membership = await teamRepository.findMembershipByUserId(userId);
-  if (!membership) throw new AppError('소속된 팀이 없습니다.', 403);
-  return membership;
-};
+const { requireTeamMembership } = require('../team/team.service');
 
 // ── 매매 제안 목록 ──
 

@@ -22,7 +22,7 @@ const createProposal = async (conn, data) => {
 
 const findById = async (id) => {
   const [rows] = await pool.query(
-    `SELECT tp.*, u.nickname AS proposer_nickname, s.stock_name
+    `SELECT tp.*, u.nickname AS proposer_nickname, s.name AS stock_name
      FROM TradeProposals tp
      JOIN Users u ON tp.proposed_by = u.id
      LEFT JOIN Stocks s ON tp.stock_code = s.stock_code
@@ -33,7 +33,7 @@ const findById = async (id) => {
 };
 
 const findByTeamId = async (teamId, status) => {
-  let sql = `SELECT tp.*, u.nickname AS proposer_nickname, s.stock_name
+  let sql = `SELECT tp.*, u.nickname AS proposer_nickname, s.name AS stock_name
      FROM TradeProposals tp
      JOIN Users u ON tp.proposed_by = u.id
      LEFT JOIN Stocks s ON tp.stock_code = s.stock_code

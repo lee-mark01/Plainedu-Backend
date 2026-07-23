@@ -3,7 +3,14 @@ const teamRepository = require('./team.repository');
 const userRepository = require('../user/user.repository');
 const accountService = require('../account/account.service');
 
-const createTeam = async (user_id, name, max_member_count) => {
+// 팀 소속 확인 헬퍼 — portfolio/tradeProposal/teamOrder 등 "팀원만 접근 가능"한 기능들이 공유
+const requireTeamMembership = async (userId) => {
+  const membership = await teamRepository.findMembershipByUserId(userId);
+  if (!membership) throw new AppError('소속된 팀이 없습니다.', 403);
+  return membership;
+};
+
+const createTeam = async (user_id, name, max_member_count, position) => {
   const user = await userRepository.findById(user_id);
   if (!user.school_id || !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
@@ -16,12 +23,13 @@ const createTeam = async (user_id, name, max_member_count) => {
 
   const team_id = await teamRepository.createTeamWithLeader(user.school_id, name, max_member_count, user_id);
   await accountService.getOrCreateTeamAccount(team_id, user.school_id);
+  await userRepository.updatePosition(user_id, position);
   const team = await teamRepository.findById(team_id);
   const members = await teamRepository.findMembersByTeamId(team_id);
   return { ...team, members };
 };
 
-const joinTeam = async (user_id, join_code) => {
+const joinTeam = async (user_id, join_code, position) => {
   const user = await userRepository.findById(user_id);
   if (!user.school_id || !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
@@ -44,6 +52,7 @@ const joinTeam = async (user_id, join_code) => {
   }
 
   await teamRepository.joinTeam(team.id, user_id);
+  await userRepository.updatePosition(user_id, position);
   const updated = await teamRepository.findById(team.id);
   const members = await teamRepository.findMembersByTeamId(team.id);
   return { ...updated, members };
@@ -68,4 +77,4 @@ const getMyTeam = async (user_id) => {
   return { ...team, members };
 };
 
-module.exports = { createTeam, joinTeam, listTeams, getMyTeam };
+module.exports = { createTeam, joinTeam, listTeams, getMyTeam, requireTeamMembership };

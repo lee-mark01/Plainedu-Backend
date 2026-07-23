@@ -82,7 +82,7 @@ const deleteAllocations = async (conn, portfolioId) => {
 
 const findAllocationsByPortfolioId = async (portfolioId) => {
   const [rows] = await pool.query(
-    `SELECT pa.*, s.stock_name
+    `SELECT pa.*, s.name AS stock_name
      FROM PortfolioAllocations pa
      LEFT JOIN Stocks s ON pa.stock_code = s.stock_code
      WHERE pa.portfolio_id = ?`,

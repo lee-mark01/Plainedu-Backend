@@ -6,12 +6,14 @@ const stockRepository = require('../stock/stock.repository');
 const chartService = require('../stock/chart.service');
 const { getRealtimeSymbols } = require('../../config/realtimeSymbols');
 const { checkCrosses } = require('./matching.calculator');
+const tradeProposalRepository = require('../portfolio/tradeProposal.repository');
 
 // 지정가 주문은 틱이 실제로 들어오는 종목에서만 체결을 기대할 수 있다 (REALTIME_SYMBOLS 밖은 영원히 PENDING).
 // 시장가는 REST 폴백이 있는 chartService.getQuote()로 즉시 체결하므로 이 제약이 없다.
-const placeOrder = async (userId, { stock_code, order_type, price_type, order_quantity, order_price }) => {
-  const account = await accountService.getOrCreateIndividualAccount(userId); // 이번 단계는 개인계좌 주문만 지원
-
+//
+// 개인 주문(placeOrder)과 팀 주문(teamOrder.service.js의 placeTeamOrder) 양쪽이 공유하는 핵심 로직.
+// 계좌 확보/권한 확인은 호출부 책임이고, 여기서는 "이 계좌로 이 주문을 처리한다"만 담당한다.
+const executeOrderPlacement = async (account, traderId, { stock_code, order_type, price_type, order_quantity, order_price, proposal_id = null }) => {
   const stock = await stockRepository.findByCode(stock_code);
   if (!stock || stock.status !== 'ACTIVE') {
     throw new AppError('거래할 수 없는 종목입니다.', 400);
@@ -33,7 +35,8 @@ const placeOrder = async (userId, { stock_code, order_type, price_type, order_qu
 
     const order = await tradingRepository.createOrder(conn, {
       account_id: account.id,
-      trader_id: userId,
+      proposal_id,
+      trader_id: traderId,
       stock_code,
       order_type,
       price_type,
@@ -60,6 +63,10 @@ const placeOrder = async (userId, { stock_code, order_type, price_type, order_qu
       );
     }
 
+    if (result.filled && proposal_id) {
+      await tradeProposalRepository.updateStatus(conn, proposal_id, 'EXECUTED');
+    }
+
     await conn.commit();
     const [[updatedAccount]] = await pool.query('SELECT id, cash_balance FROM VirtualAccounts WHERE id = ?', [account.id]);
     return {
@@ -72,6 +79,11 @@ const placeOrder = async (userId, { stock_code, order_type, price_type, order_qu
   } finally {
     conn.release();
   }
+};
+
+const placeOrder = async (userId, orderParams) => {
+  const account = await accountService.getOrCreateIndividualAccount(userId); // 개인계좌 주문
+  return executeOrderPlacement(account, userId, orderParams);
 };
 
 const cancelOrder = async (userId, orderId) => {
@@ -101,4 +113,4 @@ const cancelOrder = async (userId, orderId) => {
   }
 };
 
-module.exports = { placeOrder, cancelOrder };
+module.exports = { placeOrder, cancelOrder, executeOrderPlacement };

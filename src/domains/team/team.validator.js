@@ -3,10 +3,12 @@ const Joi = require('joi');
 const createTeamSchema = Joi.object({
   name: Joi.string().trim().min(2).max(50).required(),
   max_member_count: Joi.number().integer().min(2).max(8).default(4),
+  position: Joi.string().valid('TRADER', 'ANALYST').required(),
 });
 
 const joinTeamSchema = Joi.object({
   join_code: Joi.string().trim().uppercase().length(8).required(),
+  position: Joi.string().valid('TRADER', 'ANALYST').required(),
 });
 
 // GET /api/teams — 같은 학교 팀 목록/검색 (keyword 미지정 시 전체 목록)
