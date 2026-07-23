@@ -3,6 +3,7 @@
 const pool = require('../../config/db');
 const tradingRepository = require('./trading.repository');
 const { checkCrosses } = require('./matching.calculator');
+const tradeProposalRepository = require('../portfolio/tradeProposal.repository');
 
 const tryFillOrder = async (orderId, currentPrice) => {
   const conn = await pool.getConnection();
@@ -31,6 +32,9 @@ const tryFillOrder = async (orderId, currentPrice) => {
     if (!result.filled) {
       // 크로스는 됐지만 그 사이 현금/보유수량을 다른 주문에 써버린 경우 — 무한 재시도하지 않고 실패 처리
       await tradingRepository.markOrderFailed(conn, order.id);
+    } else if (order.proposal_id) {
+      // 즉시체결 경로(trading.service.js)와 동일하게, 틱으로 나중에 체결돼도 참조한 제안을 EXECUTED로 전환
+      await tradeProposalRepository.updateStatus(conn, order.proposal_id, 'EXECUTED');
     }
 
     await conn.commit();

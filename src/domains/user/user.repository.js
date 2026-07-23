@@ -13,4 +13,8 @@ const findById = async (id) => {
   return rows[0] || null;
 };
 
-module.exports = { findAll, findById };
+const updatePosition = async (id, position, executor = pool) => {
+  await executor.query('UPDATE Users SET position = ? WHERE id = ?', [position, id]);
+};
+
+module.exports = { findAll, findById, updatePosition };
