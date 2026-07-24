@@ -6,20 +6,6 @@ const validate = require('../../middlewares/validate');
 const portfolioController = require('./portfolio.controller');
 const { createPortfolioSchema, updatePortfolioSchema, voteSchema } = require('./portfolio.validator');
 
-const tradeProposalController = require('./tradeProposal.controller');
-const {
-  createProposalSchema,
-  listProposalsSchema,
-  voteSchema: proposalVoteSchema,
-} = require('./tradeProposal.validator');
-
-// ── 매매 제안 (Trade Proposals) — /:id 보다 위에 위치해야 함 ──
-
-router.get('/trade-proposals', authenticate, validate(listProposalsSchema, 'query'), tradeProposalController.listProposals);
-router.post('/trade-proposals', authenticate, validate(createProposalSchema), tradeProposalController.createProposal);
-router.get('/trade-proposals/:id', authenticate, tradeProposalController.getProposalDetail);
-router.post('/trade-proposals/:id/votes', authenticate, validate(proposalVoteSchema), tradeProposalController.vote);
-
 // ── 모델포트폴리오 (MP) ──
 
 router.get('/', authenticate, portfolioController.listPortfolios);

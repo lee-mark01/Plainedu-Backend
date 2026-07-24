@@ -4,9 +4,9 @@ const round2 = (n) => Math.round(n * 100) / 100;
 
 const createOrder = async (conn, o) => {
   const [result] = await conn.query(
-    `INSERT INTO Orders (account_id, proposal_id, trader_id, stock_code, order_type, price_type, order_price, order_quantity)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [o.account_id, o.proposal_id || null, o.trader_id, o.stock_code, o.order_type, o.price_type, o.order_price, o.order_quantity]
+    `INSERT INTO Orders (account_id, trader_id, stock_code, order_type, price_type, order_price, order_quantity)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [o.account_id, o.trader_id, o.stock_code, o.order_type, o.price_type, o.order_price, o.order_quantity]
   );
   return { id: result.insertId, status: 'PENDING', ...o };
 };
@@ -92,7 +92,7 @@ const listOrdersByAccount = async (accountId, { status, page, limit }) => {
 
   const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM Orders WHERE ${whereSql}`, params);
   const [orders] = await pool.query(
-    `SELECT id, proposal_id, trader_id, stock_code, order_type, price_type, order_price, order_quantity,
+    `SELECT id, trader_id, stock_code, order_type, price_type, order_price, order_quantity,
             executed_price, executed_quantity, status, created_at, completed_at
      FROM Orders WHERE ${whereSql}
      ORDER BY id DESC

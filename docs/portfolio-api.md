@@ -1,4 +1,4 @@
-# 모델포트폴리오(MP) & 매매 제안 — API 명세
+# 모델포트폴리오(MP) — API 명세
 
 > 팀원이 함께 투자 전략을 세우고 투표로 의사결정하는 기능.
 > Base path: `/api/portfolios` · 전 라우트 🔒 인증 필수
@@ -12,9 +12,8 @@
 3. [전략 준수도(Alignment) 계산](#3-전략-준수도alignment-계산)
 4. [API 목록 요약](#4-api-목록-요약)
 5. [MP API 상세](#5-mp-api-상세)
-6. [매매 제안 API 상세](#6-매매-제안-api-상세)
-7. [DB 테이블](#7-db-테이블)
-8. [에러 코드](#8-에러-코드)
+6. [DB 테이블](#6-db-테이블)
+7. [에러 코드](#7-에러-코드)
 
 ---
 
@@ -26,7 +25,6 @@
 | **Active MP** | 현재 운용 중인 MP. 팀당 **1개만** 존재. |
 | **Draft** | 작성 중인 MP. 본인만 보고 수정/삭제 가능. 아직 팀에 공개 안 됨. |
 | **수정안(Revision)** | 기존 Active MP를 기반으로 비중을 바꿔 제출하는 새 MP. |
-| **매매 제안(Trade Proposal)** | "삼성전자 20주를 155,000원에 사자"처럼 **개별 매매**를 제안하는 것. MP와 별개. |
 | **투표** | 팀원 과반수 찬성 시 **가결**, 과반수 반대 시 **부결**. |
 | **전략 준수도(Alignment)** | Active MP의 목표 비중 vs 실제 보유 비중이 얼마나 일치하는지 0~100점. |
 
@@ -102,17 +100,6 @@ Alignment       = 100 × (1 - TotalDiff / 200)    ← 0~100 클램프
 | POST | `/api/portfolios/:id/submit` | Draft → PENDING 제출 |
 | POST | `/api/portfolios/:id/votes` | MP 투표 (찬성/반대) |
 | GET | `/api/portfolios/:id/votes` | 투표 현황 |
-
-### 매매 제안 (Trade Proposals)
-
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/api/portfolios/trade-proposals` | 매매 제안 목록 |
-| POST | `/api/portfolios/trade-proposals` | 매매 제안 작성 |
-| GET | `/api/portfolios/trade-proposals/:id` | 매매 제안 상세 |
-| POST | `/api/portfolios/trade-proposals/:id/votes` | 매매 제안 투표 |
-
----
 
 ## 5. MP API 상세
 
@@ -498,154 +485,7 @@ GET /api/portfolios/:id/votes
 
 ---
 
-## 6. 매매 제안 API 상세
-
-### 6-1. 매매 제안 목록
-
-```
-GET /api/portfolios/trade-proposals?status=PENDING
-```
-
-| Query Param | 타입 | 설명 |
-|-------------|------|------|
-| `status` | string | 필터. `PENDING` / `APPROVED` / `REJECTED` / `EXECUTED`. 생략 시 전체. |
-
-**응답 예시**
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "team_id": 1,
-      "proposed_by": 3,
-      "proposer_nickname": "박애널리스트",
-      "stock_code": "AAPL",
-      "stock_name": "Apple Inc",
-      "order_type": "BUY",
-      "quantity": 20,
-      "target_price": 155000,
-      "rationale": "AI 반도체 시장의 핵심 기업으로...",
-      "market_analysis": "기술적 분석: RSI 65...",
-      "risk_analysis": "주요 리스크: 1) 반도체 업황 사이클...",
-      "approval_count": 2,
-      "rejection_count": 0,
-      "status": "PENDING",
-      "created_at": "2026-02-10T05:30:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-### 6-2. 매매 제안 작성
-
-```
-POST /api/portfolios/trade-proposals
-```
-
-**Request Body**
-
-```json
-{
-  "stock_code": "AAPL",
-  "order_type": "BUY",
-  "quantity": 20,
-  "target_price": 155000,
-  "rationale": "AI 반도체 시장의 핵심 기업으로, 최근 실적이 예상을 크게 상회했습니다...",
-  "market_analysis": "기술적 분석: RSI 지표는 65로 과열 구간 진입 전이며...",
-  "risk_analysis": "주요 리스크: 1) 반도체 업황 사이클 변동성..."
-}
-```
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| `stock_code` | string | O | 종목 코드 |
-| `order_type` | string | O | `BUY`(매수) 또는 `SELL`(매도) |
-| `quantity` | number | O | 수량 (1 이상 정수) |
-| `target_price` | number | O | 목표 가격 |
-| `rationale` | string | O | **투자 근거** (필수) |
-| `market_analysis` | string | - | 시장 분석 (선택) |
-| `risk_analysis` | string | - | 리스크 분석 (선택) |
-
-**응답 (201)**
-
-```json
-{ "success": true, "data": { "id": 1, "status": "PENDING" } }
-```
-
----
-
-### 6-3. 매매 제안 상세
-
-```
-GET /api/portfolios/trade-proposals/:id
-```
-
-**응답 예시**
-
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "stock_code": "AAPL",
-    "stock_name": "Apple Inc",
-    "order_type": "BUY",
-    "quantity": 20,
-    "target_price": 155000,
-    "rationale": "AI 반도체 시장의 핵심 기업으로...",
-    "market_analysis": "기술적 분석: RSI 65...",
-    "risk_analysis": "주요 리스크: ...",
-    "proposer_nickname": "박애널리스트",
-    "approval_count": 2,
-    "rejection_count": 0,
-    "status": "PENDING",
-    "created_at": "2026-02-10T05:30:00.000Z",
-    "votes": [
-      { "voter_id": 1, "voter_nickname": "김팀장", "is_approved": true, "created_at": "..." },
-      { "voter_id": 2, "voter_nickname": "이멤버", "is_approved": true, "created_at": "..." }
-    ]
-  }
-}
-```
-
----
-
-### 6-4. 매매 제안 투표
-
-```
-POST /api/portfolios/trade-proposals/:id/votes
-```
-
-**Request Body**
-
-```json
-{ "is_approved": true }
-```
-
-투표 규칙은 MP 투표와 동일 (같은 팀, PENDING만, 1인 1표, 과반수 확정).
-
-**응답 (201)**
-
-```json
-{
-  "success": true,
-  "data": {
-    "proposal_id": 1,
-    "vote": "APPROVE",
-    "approval_count": 3,
-    "rejection_count": 0,
-    "status": "APPROVED"
-  }
-}
-```
-
----
-
-## 7. DB 테이블
+## 6. DB 테이블
 
 ### Portfolios (기존 테이블 확장)
 
@@ -674,36 +514,6 @@ POST /api/portfolios/trade-proposals/:id/votes
 | target_percentage | DECIMAL(5,2) | 목표 비중(%) |
 | **reason** | TEXT | 🆕 종목별 투자 근거 |
 
-### TradeProposals 🆕
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| id | INT PK | |
-| team_id | INT FK → Teams | |
-| proposed_by | INT FK → Users | |
-| stock_code | VARCHAR(20) FK → Stocks | |
-| order_type | ENUM('BUY','SELL') | |
-| quantity | INT | 수량 |
-| target_price | DECIMAL(18,2) | 목표 가격 |
-| rationale | TEXT | 투자 근거 (필수) |
-| market_analysis | TEXT | 시장 분석 |
-| risk_analysis | TEXT | 리스크 분석 |
-| approval_count | INT | 찬성 수 |
-| rejection_count | INT | 반대 수 |
-| status | ENUM | `PENDING` `APPROVED` `REJECTED` `EXECUTED` |
-| created_at | TIMESTAMP | |
-
-### TradeProposalVotes 🆕
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| id | INT PK | |
-| proposal_id | INT FK → TradeProposals | |
-| voter_id | INT FK → Users | |
-| is_approved | BOOLEAN | 찬성/반대 |
-| created_at | TIMESTAMP | |
-| | UNIQUE(proposal_id, voter_id) | 1인 1표 |
-
 ### TeamActivePortfolios (기존 — 변경 없음)
 
 | 컬럼 | 타입 | 설명 |
@@ -714,7 +524,7 @@ POST /api/portfolios/trade-proposals/:id/votes
 
 ---
 
-## 8. 에러 코드
+## 7. 에러 코드
 
 | 상태 | 코드 | 메시지 | 발생 상황 |
 |------|------|--------|----------|

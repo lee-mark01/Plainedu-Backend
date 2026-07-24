@@ -3,7 +3,7 @@ const teamRepository = require('./team.repository');
 const userRepository = require('../user/user.repository');
 const accountService = require('../account/account.service');
 
-// 팀 소속 확인 헬퍼 — portfolio/tradeProposal/teamOrder 등 "팀원만 접근 가능"한 기능들이 공유
+// 팀 소속 확인 헬퍼 — portfolio/teamOrder 등 "팀원만 접근 가능"한 기능들이 공유
 const requireTeamMembership = async (userId) => {
   const membership = await teamRepository.findMembershipByUserId(userId);
   if (!membership) throw new AppError('소속된 팀이 없습니다.', 403);
