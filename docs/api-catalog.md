@@ -129,10 +129,6 @@
 | POST | `/api/portfolios/:id/submit` | 🔒 | Draft → PENDING 제출 (title·description·allocations 100% 필수) |
 | POST | `/api/portfolios/:id/votes` | 🔒 | MP 투표. body `{ is_approved }` — 과반수 시 자동 가결/부결 |
 | GET | `/api/portfolios/:id/votes` | 🔒 | 투표 현황 (투표자 목록 포함) |
-| GET | `/api/portfolios/trade-proposals?status=` | 🔒 | 매매 제안 목록 (status 필터 선택) |
-| POST | `/api/portfolios/trade-proposals` | 🔒 | 매매 제안 작성. body `{ stock_code, order_type, quantity, target_price, rationale, ... }` |
-| GET | `/api/portfolios/trade-proposals/:id` | 🔒 | 매매 제안 상세 (votes 포함) |
-| POST | `/api/portfolios/trade-proposals/:id/votes` | 🔒 | 매매 제안 투표. body `{ is_approved }` — 과반수 시 자동 확정 |
 
 ## ranking — 랭킹 (`/api/ranking`) — **미구현 (예정)**
 
