@@ -1,7 +1,7 @@
 const accountService = require('./account.service');
 const { getAccountValuation } = require('./account.valuation');
 
-// GET /api/accounts/me — 계좌 요약 + 보유종목 평가손익 (스펙: docs/specs/spec-account-valuation.md §5)
+// GET /api/accounts/me — 계좌 요약 + 보유종목 평가손익 
 // 계좌가 없으면 로그인 시와 동일한 getOrCreate 흐름으로 빈 계좌를 만들어 정상 응답한다 (500 금지).
 const getMyAccount = async (req, res, next) => {
   try {

@@ -1,4 +1,4 @@
-// account.valuation.calculator 단위 테스트 (스펙: docs/specs/spec-account-valuation.md §4.1·§7)
+// account.valuation.calculator 단위 테스트 
 // 의존성 0 순수 함수만 검증 — DB/Redis 불필요, `node --test tests/` 로 실행
 const { test } = require('node:test');
 const assert = require('node:assert/strict');

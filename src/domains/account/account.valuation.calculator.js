@@ -1,4 +1,4 @@
-// 계좌 평가 순수 계산부 (의존성 0) — 스펙: docs/specs/spec-account-valuation.md §4.1
+// 계좌 평가 순수 계산부 (의존성 0) 
 // DB/가격조회를 모르는 순수 함수라 node --test 단위 테스트 대상 (tests/account.valuation.test.js)
 
 // 부동소수 오차 보정 반올림 (1000.005 × 100 = 100000.4999… 같은 케이스 방지)
