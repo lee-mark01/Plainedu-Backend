@@ -3,9 +3,11 @@
 > **이 문서는 "현재 코드에 실제로 존재하는 API"의 단일 목록이다.**
 > 유지 규칙: **API를 추가/변경/삭제한 사람이 같은 PR에서 이 문서의 해당 도메인 표를 갱신한다.** (PR 체크리스트에 포함 권장)
 > 용도: 팀원 간 API 파악 · Postman 컬렉션 시드 · 추후 Swagger(OpenAPI) 작성의 원본.
-> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-07-17
+> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-07-19
 
 ## 공통 규칙
+
+**응답 봉투·에러 코드·페이지네이션 등 전 도메인 공통 규칙은 [api-conventions.md](api-conventions.md) 참조.** 요약:
 
 - Base URL: `/api` (예외: OAuth 리다이렉트 콜백 `/auth/*/callback`)
 - **인증**: `Authorization: Bearer {accessToken}` — 표의 🔒 표시. 실패 시 401 (`TOKEN_EXPIRED` / `TOKEN_INVALID` 코드 포함)
@@ -31,6 +33,9 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | GET | `/api/users` | — | 유저 목록 (예시 수준 스텁 — 실사용 API 아님) |
+| POST | `/api/users/attendance/check-in` | 🔒 | 출석 체크인 (앱 접속 시 프론트가 명시적으로 호출) |
+| GET | `/api/users/attendance/streak` | 🔒 | 이번 주(월~일) 출석 + 연속학습일 (칭찬 화면용) |
+| GET | `/api/users/attendance?year=&month=` | 🔒 | 월별 출석 조회 |
 
 ## school — 학교 (`/api/schools`)
 
@@ -60,9 +65,6 @@
 | GET | `/api/learning/topics/:topicId/quizzes` | 퀴즈 문제 조회 |
 | POST | `/api/learning/quizzes/:quizId/answer` | 퀴즈 단건 채점. body `{ answer }` |
 | POST | `/api/learning/topics/:topicId/quizzes/complete` | 퀴즈 세션 완료 (결과 페이지) |
-| POST | `/api/learning/attendance/check-in` | 출석 체크인 |
-| GET | `/api/learning/attendance/streak` | 최근 7일 출석 + 연속학습일 |
-| GET | `/api/learning/attendance?year=&month=` | 월별 출석 조회 |
 
 ## community — 커뮤니티 (`/api/community`)
 
@@ -105,8 +107,7 @@
 | DELETE | `/api/trading/orders/:id` | 🔒 | 대기(PENDING) 주문 취소 — 체결됨/타인 주문은 409/403 |
 
 ## account — 가상계좌/평가 (`/api/accounts`)
-
-상세 스키마: [specs/spec-account-valuation.md](specs/spec-account-valuation.md) §5
+상세 스키마: spec-account-valuation §5 (⚠️ 스펙 문서가 리포에 미수록 — 보유자가 `docs/specs/`에 추가 필요)
 
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
@@ -130,9 +131,19 @@
 | POST | `/api/portfolios/:id/votes` | 🔒 | MP 투표. body `{ is_approved }` — 과반수 시 자동 가결/부결 |
 | GET | `/api/portfolios/:id/votes` | 🔒 | 투표 현황 (투표자 목록 포함) |
 
-## ranking — 랭킹 (`/api/ranking`) — **미구현 (예정)**
+## ranking — 랭킹 (`/api/ranking`)
 
-상세: [specs/spec-ranking.md](specs/spec-ranking.md) §8. 예정 목록: `GET /individual` · `/teams` · `/schools?mode=` · `/me`
+상세 명세: [ranking-api.md](ranking-api.md) (개념·산식·응답 스키마·Open Questions) · ZSET 미계산 시 빈 목록 + `updated_at: null`
+
+| Method | Path | 인증 | 설명 |
+|---|---|---|---|
+| GET | `/api/ranking/individual?page=&limit=` | 🔒 | 개인 리더보드 — PersonalScore(수익률%), 동점 시 2차 참여율·3차 출석일 재정렬 (2026-07-21) |
+| GET | `/api/ranking/teams?page=&limit=` | 🔒 | 팀 리더보드 — TeamScore(Point 소수1) = R%×0.9 + Alignment×0.1(스텁 100 고정), R%·Alignment 분리 노출, 동점은 공동 순위 (2026-07-28) |
+| GET | `/api/ranking/schools?mode=individual\|team&page=&limit=` | 🔒 | 소속(학교) 리더보드 — 학교별 가중평균 org score. `mode=individual`: Σ(개인점수×참여율)/Σ참여율(단위 %) · `mode=team`: 팀점수 평균(단위 Point). 응답에 `unit` 포함, 동점은 공동 순위 (2026-07-28) |
+| GET | `/api/ranking/me` | 🔒 | 내 순위 요약 — `individual` + `team`(무소속 null) + `school_individual`·`school_team`(학교 미설정 null, 순위판 미등재는 rank null). 4개 섹션 전부 `rank_change` 포함 (2026-07-28) |
+| GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day (2026-07-21) |
+
+랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화도 구현 완료 (2026-07-28): 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) — 리더보드 3종 각 행에 `rank_change`(직전 스냅샷 대비, 없으면 null) 추가.
 
 ## 실시간 (Socket.IO)
 
@@ -160,8 +171,8 @@
 
 | API | 도메인 | 근거/비고 |
 |---|---|---|
-| `GET /api/ranking/individual` `/teams` `/schools?mode=` `/me` | ranking | [spec-ranking §8](specs/spec-ranking.md) — Phase 3 |
-| 팀 계좌 **주문** 지원 (기존 POST orders 확장) | trading | 체결 담당. 팀 랭킹 R% 재료 — 현재 개인계좌만 지원 |
+| ~~`GET /api/ranking/individual` `/teams` `/schools?mode=` `/me` `/season`~~ | ~~ranking~~ | ✅ **구현 완료** (individual·me·season 2026-07-21, teams·schools 2026-07-28) — 조회 API 4종 전부 완성 |
+| ~~팀 계좌 **주문** 지원~~ | ~~trading~~ | ✅ **구현 완료** (2026-07-23 feature/team-trading) — `teamOrder.*`, Trader 포지션 전용 |
 | ~~MP(모델 포트폴리오) 설정/조회, CurrentWeight, Alignment~~ | ~~portfolio~~ | ✅ **구현 완료** (2026-07-17) — [docs/portfolio-api.md](portfolio-api.md) |
 | 메인홈 집계 (기존 API 조합 or 별도 엔드포인트) | 미정 | plan 백로그 — 프론트와 협의 |
 | `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 일일 스냅샷 잡이 수행(기록 함수는 account 소유, Task 8에서 호출 배선) → Task 8 이후. 순위 추이(DailyRankings)는 별개로 ranking 소유. 노출 화면 범위는 기획 확인 중 (2026-07-12) |
@@ -172,7 +183,7 @@
 | API | 도메인 | 왜 필요한가 |
 |---|---|---|
 | `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 팀 모드 화면 (2026-07-12 확정: 포트폴리오 도메인 이후 team 도메인에서 구현). **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
-| `GET /api/users/me` · `PATCH /api/users/me` — 내 프로필 조회/수정(닉네임·학교) | user | 마이페이지 필수. 현재 user 도메인은 스텁 1개뿐 |
+| `GET /api/users/me` · `PATCH /api/users/me` — 내 프로필 조회/수정(닉네임·학교) | user | 마이페이지 필수. 현재 user 도메인은 스텁 + 출석 API뿐 |
 | `GET /api/users/:id` — 타인 프로필 | user | 커뮤니티에서 작성자 클릭 시 |
 | `GET /api/teams/:id` — 팀 상세(팀원 목록·포지션) | team | 팀 랭킹에서 팀 클릭 시. TRADER 포지션 표시 |
 | `POST /api/teams/leave` (또는 DELETE) — 팀 탈퇴 | team | 가입만 있고 탈퇴 없음 |

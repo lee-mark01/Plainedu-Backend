@@ -4,6 +4,7 @@ const http = require('http');
 const app = require('./app');
 const redis = require('./config/redis');
 const tokenCleanup = require('./jobs/tokenCleanup');
+const rankingScheduler = require('./jobs/rankingScheduler');
 const marketData = require('./marketData');
 const matchingService = require('./domains/trading/matching.service');
 
@@ -17,11 +18,13 @@ marketData.onPriceUpdate((symbol, price) => matchingService.handlePriceUpdate(sy
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   tokenCleanup.start();
+  rankingScheduler.start();
 });
 
 // graceful shutdown: 업스트림 WS·Socket.IO·Redis 정리 후 종료
 const shutdown = (signal) => {
   console.log(`\n[${signal}] 서버 종료 중...`);
+  rankingScheduler.stop();
   marketData.stop();
   redis.quit().catch(() => {});
   server.close(() => process.exit(0));

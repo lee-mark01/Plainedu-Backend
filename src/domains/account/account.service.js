@@ -22,6 +22,22 @@ const getOrCreateActiveSeason = async () => {
   return accountRepository.findActiveSeason(pool);
 };
 
+// 시즌 단건 조회 (랭킹 배치가 특정 시즌의 기간/날짜로 참여율을 계산할 때 사용 — 조회 전용)
+const getSeasonById = async (seasonId) => accountRepository.findSeasonById(pool, seasonId);
+
+// 활성 시즌 조회 (없으면 null — 생성하지 않음). 패시브 배치(랭킹 스케줄러)가
+// getOrCreateActiveSeason의 자동 시즌 생성을 피하고 "있을 때만" 도는 데 사용.
+const getActiveSeason = async () => accountRepository.findActiveSeason(pool);
+
+// 일일 자산 스냅샷 기록 (랭킹 Task 8이 마감 후 호출) — AccountAssetHistories UPSERT(멱등)
+const ASSET_HISTORY_CHUNK_SIZE = 500;
+const recordDailyAssetHistories = async (rows) => {
+  for (let i = 0; i < rows.length; i += ASSET_HISTORY_CHUNK_SIZE) {
+    await accountRepository.upsertAssetHistories(pool, rows.slice(i, i + ASSET_HISTORY_CHUNK_SIZE));
+  }
+  return rows.length;
+};
+
 // schools.school_group이 아직 없는 예전 동기화 데이터 대비 이름 기반 휴리스틱 폴백
 const deriveSchoolGroup = async (schoolId) => {
   if (!schoolId) return null;
@@ -75,4 +91,12 @@ const getOrCreateTeamAccount = async (teamId, schoolId) => {
   return accountRepository.findTeamAccount(pool, teamId, season.id);
 };
 
-module.exports = { getOrCreateActiveSeason, deriveSchoolGroup, getOrCreateIndividualAccount, getOrCreateTeamAccount };
+module.exports = {
+  getOrCreateActiveSeason,
+  getSeasonById,
+  getActiveSeason,
+  recordDailyAssetHistories,
+  deriveSchoolGroup,
+  getOrCreateIndividualAccount,
+  getOrCreateTeamAccount,
+};

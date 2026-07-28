@@ -7,6 +7,11 @@ const findActiveSeason = async (executor) => {
   return rows[0] || null;
 };
 
+const findSeasonById = async (executor, seasonId) => {
+  const [rows] = await executor.query('SELECT * FROM Seasons WHERE id = ?', [seasonId]);
+  return rows[0] || null;
+};
+
 const createSeason = async (executor, { name, start_date, end_date, total_days }) => {
   const [result] = await executor.query(
     "INSERT INTO Seasons (name, start_date, end_date, total_days, status) VALUES (?, ?, ?, ?, 'ACTIVE')",
@@ -101,8 +106,24 @@ const bulkUpdateEquity = async (executor, rows) => {
   );
 };
 
+// rows: [{ account_id, recorded_at, total_equity, return_rate }] — 일일 자산 스냅샷(랭킹 Task 8).
+// uq_aah_account_date로 같은 날 재실행 시 UPDATE(멱등). 청크 분할은 호출자 책임.
+const upsertAssetHistories = async (executor, rows) => {
+  if (!rows.length) return;
+  const values = rows.map((r) => [r.account_id, r.recorded_at, r.total_equity, r.return_rate]);
+  await executor.query(
+    `INSERT INTO AccountAssetHistories (account_id, recorded_at, total_equity, return_rate)
+     VALUES ?
+     ON DUPLICATE KEY UPDATE
+       total_equity = VALUES(total_equity),
+       return_rate = VALUES(return_rate)`,
+    [values]
+  );
+};
+
 module.exports = {
   findActiveSeason,
+  findSeasonById,
   createSeason,
   findIndividualAccount,
   findTeamAccount,
@@ -113,4 +134,5 @@ module.exports = {
   findHoldingsByAccountId,
   findHoldingsBySeason,
   bulkUpdateEquity,
+  upsertAssetHistories,
 };
