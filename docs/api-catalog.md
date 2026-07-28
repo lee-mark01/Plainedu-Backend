@@ -171,11 +171,8 @@
 
 | API | 도메인 | 근거/비고 |
 |---|---|---|
-| ~~`GET /api/ranking/individual` `/teams` `/schools?mode=` `/me` `/season`~~ | ~~ranking~~ | ✅ **구현 완료** (individual·me·season 2026-07-21, teams·schools 2026-07-28) — 조회 API 4종 전부 완성 |
-| ~~팀 계좌 **주문** 지원~~ | ~~trading~~ | ✅ **구현 완료** (2026-07-23 feature/team-trading) — `teamOrder.*`, Trader 포지션 전용 |
-| ~~MP(모델 포트폴리오) 설정/조회, CurrentWeight, Alignment~~ | ~~portfolio~~ | ✅ **구현 완료** (2026-07-17) — [docs/portfolio-api.md](portfolio-api.md) |
 | 메인홈 집계 (기존 API 조합 or 별도 엔드포인트) | 미정 | plan 백로그 — 프론트와 협의 |
-| `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 일일 스냅샷 잡이 수행(기록 함수는 account 소유, Task 8에서 호출 배선) → Task 8 이후. 순위 추이(DailyRankings)는 별개로 ranking 소유. 노출 화면 범위는 기획 확인 중 (2026-07-12) |
+| `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 일일 스냅샷 잡이 수행(기록 함수는 account 소유) → 이후. 순위 추이(DailyRankings)는 별개로 ranking 소유. 노출 화면 범위는 기획 확인 중 (2026-07-12) |
 | `GET /api/ranking/season` — 현재 시즌 기간/D-day | ranking | 리그 페이지 시즌 표시 (2026-07-12 확정: 조회는 ranking, 시즌 생성/수명주기는 account.service 유지). Phase 3에서 함께 구현 |
 
 ## P2 — 화면상 필요한데 계획에 없음 (기획 확인 후 배분)

@@ -1,4 +1,4 @@
-// ranking.service 통합 로직 테스트 — 일일 스냅샷(Task 8)·rank_change·동점 재정렬
+// ranking.service 통합 로직 테스트 — 일일 스냅샷·rank_change·동점 재정렬
 // DB/Redis 대신 Module._load 스텁으로 repository/cache를 주입한다 (calculator·marketHours는 실물).
 // 특히 "완전 동점(점수·참여율·출석) 그룹의 스냅샷↔API 순위 역전" 회귀를 재현·방어한다:
 //   스냅샷 입력(zrevrange)은 동점 멤버가 사전순 역순, API 입력(zrangebyscore)은 정순 —

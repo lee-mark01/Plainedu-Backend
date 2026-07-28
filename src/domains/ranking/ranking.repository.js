@@ -94,7 +94,7 @@ const findSchoolProfiles = async (schoolIds, executor = pool) => {
   return map;
 };
 
-// 일일 스냅샷 UPSERT (Task 8) — uq_dr_target_date(target_type, target_id, rank_date, season_id) 활용,
+// 일일 스냅샷 UPSERT — uq_dr_target_date(target_type, target_id, rank_date, season_id) 활용,
 // 같은 날 재실행 시 행 수 불변(멱등). alignment_score·participation_rate는 미정의 보드에서 NULL
 // (스텁 값을 영구 기록하지 않는다 — 2026-07-28 결정).
 const UPSERT_CHUNK_SIZE = 500;

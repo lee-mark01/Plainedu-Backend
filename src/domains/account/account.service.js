@@ -29,7 +29,7 @@ const getSeasonById = async (seasonId) => accountRepository.findSeasonById(pool,
 // getOrCreateActiveSeason의 자동 시즌 생성을 피하고 "있을 때만" 도는 데 사용.
 const getActiveSeason = async () => accountRepository.findActiveSeason(pool);
 
-// 일일 자산 스냅샷 기록 (랭킹 Task 8이 마감 후 호출) — AccountAssetHistories UPSERT(멱등)
+// 일일 자산 스냅샷 기록 (마감후 호출) — AccountAssetHistories UPSERT(멱등)
 const ASSET_HISTORY_CHUNK_SIZE = 500;
 const recordDailyAssetHistories = async (rows) => {
   for (let i = 0; i < rows.length; i += ASSET_HISTORY_CHUNK_SIZE) {

@@ -112,7 +112,7 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 ```
 
 - 조회 API(`/individual` 등)는 이 **Redis 순위판을 읽기만** 한다. 순위판이 비어 있으면 빈 목록 + `updated_at: null`.
-- **⚠️ 순위판은 recompute가 실행돼야 채워진다.** 서버 기동 시 1분 스케줄러(Task 7)가 자동으로 돌지만 **미국 정규장 중에만** 갱신된다. 장외·서버 첫 기동 직후엔 수동 트리거(`scripts/recompute-rankings.js`)로 채울 수 있다 — 프론트 연동 시 데이터가 비어 보이면 recompute 미실행 때문일 수 있다.
+- **⚠️ 순위판은 recompute가 실행돼야 채워진다.** 서버 기동 시 1분 스케줄러가 자동으로 돌지만 **미국 정규장 중에만** 갱신된다. 장외·서버 첫 기동 직후엔 수동 트리거(`scripts/recompute-rankings.js`)로 채울 수 있다 — 프론트 연동 시 데이터가 비어 보이면 recompute 미실행 때문일 수 있다.
 
 ### "내 수익률"과 "랭킹 점수"는 계산 시점이 다르다
 
@@ -274,8 +274,8 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 **구현 완료**:
 - 개인·팀·소속 2종 리더보드, `/me`, `/season`
 - 점수 산식(개인·팀·소속), 참여율, 시세 실패 시 순위 보존, 동점 처리
-- **1분 자동 스케줄러** (Task 7): 서버 기동 시 자동 시작, 미국 정규장 중 1분마다 recompute → 라이브 순위판 갱신. 장외·활성 시즌 없음·직전 실행 미완료 시 skip.
-- **일일 스냅샷** (Task 8): 평일 16:05 ET(마감 5분 후) 최종 recompute → `DailyRankings`·`AccountAssetHistories` 기록(멱등 UPSERT) + 리더보드 `rank_change` 제공. `alignment_score`·팀/학교 `participation_rate`는 실계산 확정 전까지 `NULL`(스텁을 영구 기록하지 않음).
+- **1분 자동 스케줄러**: 서버 기동 시 자동 시작, 미국 정규장 중 1분마다 recompute → 라이브 순위판 갱신. 장외·활성 시즌 없음·직전 실행 미완료 시 skip.
+- **일일 스냅샷**: 평일 16:05 ET(마감 5분 후) 최종 recompute → `DailyRankings`·`AccountAssetHistories` 기록(멱등 UPSERT) + 리더보드 `rank_change` 제공. `alignment_score`·팀/학교 `participation_rate`는 실계산 확정 전까지 `NULL`(스텁을 영구 기록하지 않음).
 
 **주의**:
 - 스냅샷은 미국 공휴일(휴장일)에도 실행된다(marketHours가 공휴일 미반영) — 그날은 가격 변동 없는 평탄한 스냅샷 1행이 쌓일 뿐 무해. 공휴일 가드는 후속 작업.

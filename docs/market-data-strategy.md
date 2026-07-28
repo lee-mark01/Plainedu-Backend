@@ -29,7 +29,7 @@ chartService.getQuote(symbol):  ① WS 틱 있으면 틱 가격  ② 없으면 �
 - 수익률 배치(`account.valuation.fetchPriceMap`)는 **WS 틱을 1순위로 mget** 후, 없는 심볼만 getQuote 폴백. "차트는 WS인데 정산은 REST" 같은 분리는 없음 — 소스는 하나다.
 - 체결가와 화면 표시가가 같은 소스라 "보여준 가격 따로, 체결가 따로" 문제도 없음.
 - 시세 실패 정책(D4)은 실측 검증 완료: 단건은 평단가+`price_stale`, 배치는 해당 계좌 skipped(DB·ZSET 직전 값 유지, updated_at 안 바뀜 확인).
-- 서버가 주기적으로 하는 일은 WS 수신뿐이고 나머지는 전부 요청 시 pull + 캐시. (랭킹 1분 크론은 Task 7, 미구현)
+- 서버가 주기적으로 하는 일은 WS 수신뿐이고 나머지는 전부 요청 시 pull + 캐시. 
 
 ## 2. 문제 정의
 
@@ -67,7 +67,7 @@ B 이행 트리거(제안, 팀 합의 필요): DAU 50+ 지속 / 장중 429 에�
 
 ### 내(리그/계좌평가) 작업 — 팀 승인 불필요, 바로 진행 가능
 - [x] **A-1. REST 호출 페이싱** (2026-07-27 완료): 토큰버킷 전면 게이트 대신 **429 반응형**으로 구현 — 캐시 히트는 크레딧 0이라 전면 게이트 시 웜 배치만 느려지므로, 1차는 동시 실행 유지하고 **429 심볼만 윈도 리셋 대기 후 분당 예산 청크로 재시도**(재429는 줄 뒤로 순환 — 예산 독점 방지). 배치(`waitForRateLimit: true`) 전용, 단건 /me는 기존 D4 즉시 응답. env: `TWELVEDATA_CREDITS_PER_MINUTE`(8) / `TWELVEDATA_RATE_WINDOW_MS`(61s) / `TWELVEDATA_RATE_RETRY_ROUNDS`(2). 검증: 스텁 하네스 5케이스(회복/단건 무대기/웜 무지연/404 즉시 확정/청크·순환·상한) + 실DB 시딩 배치 손계산 대조. (`account.valuation.js`)
-- [x] **A-2. 랭킹 스케줄러(Task 7)를 캐시 워밍 잡으로 겸용 설계** (2026-07-28 정리): 별도 코드 없음 — `tasks/plan-ranking.md` Task 7 설계 노트로 흡수(워밍 겸용·429 페이싱과 in-flight 가드 상호작용·신선도 기대치). 구현은 Task 7에서.
+- [x] **A-2. 랭킹 스케줄러를 캐시 워밍 잡으로 겸용 설계** (2026-07-28 정리): 별도 코드 없음 — `tasks/plan-ranking.md`(워밍 겸용·429 페이싱과 in-flight 가드 상호작용·신선도 기대치). 
 - [x] **A-3. 신선도 노출** (2026-07-28 완료): `fetchPriceMap`이 `{ priceMap, priceMeta }` 반환 — priceMap은 calculator 계약(§4.1) 불변, priceMeta(`source`/`priced_at`)는 단건 진입점에서 holdings에 장식. `/accounts/me` holdings에 `price_source`(`ws`|`close`|null)·`priced_at`(ws=ISO 시각, close=거래일 `YYYY-MM-DD`) 추가. 검증: 스텁 하네스(ws ISO 변환·close 거래일·틱 히트 시 getQuote 미호출) + 실서버 `/me`에서 `"price_source":"close","priced_at":"2026-07-27"` 확인. 스펙 §4.2 갱신. **프론트 배지 작업은 B-2에서 소비.** (`account.valuation.js`)
 - [ ] **A-4. 이 문서 공유 + 화이트리스트 후보 종목 초안** (학생 인기 종목 30~50개, 데이터로 보완: 보유·관심종목 통계)
 

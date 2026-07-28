@@ -1,6 +1,6 @@
 // 랭킹 점수 순수 계산부 (의존성 0) — 산식 원본: docs/노션_리그시스템구조.md + 스펙 §3 확정 사항
 // DB/Redis를 모르는 순수 함수라 node --test 단위 테스트 대상 (tests/ranking.calculator.test.js)
-// orgWeightedScore는 소속 슬라이스(Task 6)에서 추가. alignmentScore는 랭킹에 구현하지 않는다 —
+// orgWeightedScore는 소속 슬라이스에서 추가. alignmentScore는 랭킹에 구현하지 않는다 —
 // portfolio.alignment.calculateAlignment(포트폴리오 도메인 머지, 동일 산식)를 소비 예정 (중복 구현 금지)
 
 // 부동소수 오차 보정 반올림 (account.valuation.calculator와 동일 정책: 수익률 소수 4자리)

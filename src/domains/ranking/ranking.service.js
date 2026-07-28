@@ -150,7 +150,7 @@ const recomputeRankings = async (seasonId) => {
     team: { ...team, skipped: protectedTeams.size },
     school_individual: { ...schoolIndividual, protected: schoolIndiv.protectedSchools.size },
     school_team: { ...schoolTeam, protected: schoolTm.protectedSchools.size },
-    // 일일 스냅샷(Task 8)이 AccountAssetHistories를 같은 배치 시점 값으로 기록할 수 있도록
+    // 일일 스냅샷이 AccountAssetHistories를 같은 배치 시점 값으로 기록할 수 있도록
     // 계좌별 평가 결과를 함께 반환 (skipped 계좌는 신선한 값이 없으므로 미포함)
     accounts: results.map((r) => ({
       account_id: r.account_id,
@@ -172,7 +172,7 @@ const coRankAll = (entries) => {
 // 참여율(0~1) → DailyRankings.participation_rate(% 2자리). null은 그대로 (분모 0 방어)
 const toParticipationPercent = (ratio) => (ratio == null ? null : Math.round(ratio * 10000) / 100);
 
-// 일일 스냅샷 (Task 8, 16:05 ET 크론 소관) — 최종 recompute → 4개 보드 → DailyRankings UPSERT +
+// 일일 스냅샷 ( 16:05 ET 크론 소관) — 최종 recompute → 4개 보드 → DailyRankings UPSERT +
 // AccountAssetHistories 기록. rank_date는 ET 거래일(getEtDateString) 기준으로 멱등.
 // alignment_score는 실계산(Open Q4) 전까지 NULL, participation_rate는 개인만 실값(팀 Open Q 1·학교는
 // 정의 없음 → NULL) — 스텁을 영구 기록하지 않는다 (2026-07-28 결정).
@@ -393,7 +393,7 @@ const getIndividualLeaderboard = async ({ page = 1, limit = 20 } = {}) => {
       if (rowsByRank.has(r)) rankings.push(rowsByRank.get(r));
     }
 
-    // 순위변동(Task 8): 가장 최근 과거 스냅샷 대비. 양수=상승. 스냅샷 없으면(시즌 첫날 등) null
+    // 순위변동: 가장 최근 과거 스냅샷 대비. 양수=상승. 스냅샷 없으면(시즌 첫날 등) null
     const prevRanks = await rankingRepository.findPrevRanks(
       season.id, 'USER', rankings.map((r) => r.user_id), getEtDateString()
     );

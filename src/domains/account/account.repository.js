@@ -106,7 +106,7 @@ const bulkUpdateEquity = async (executor, rows) => {
   );
 };
 
-// rows: [{ account_id, recorded_at, total_equity, return_rate }] — 일일 자산 스냅샷(랭킹 Task 8).
+// rows: [{ account_id, recorded_at, total_equity, return_rate }] — 일일 자산 스냅샷.
 // uq_aah_account_date로 같은 날 재실행 시 UPDATE(멱등). 청크 분할은 호출자 책임.
 const upsertAssetHistories = async (executor, rows) => {
   if (!rows.length) return;
