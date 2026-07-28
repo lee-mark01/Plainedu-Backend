@@ -1,9 +1,9 @@
-// 랭킹 1분 스케줄러 (plan-ranking.md Task 7) — 장중 라이브 ZSET 갱신 전용.
+// 랭킹 1분 스케줄러  — 장중 라이브 ZSET 갱신 전용.
 // ⚠️ 단일 인스턴스 전제: in-flight 가드(running)는 프로세스 로컬이다. pm2 cluster 등으로
 //   서버를 2개 이상 띄우면 크론이 중복 실행돼 TwelveData 크레딧이 배수 소모된다(데이터는
 //   UPSERT 멱등이라 무사). 다중 인스턴스 전환 시 Redis 락(SET NX)으로 교체할 것.
 // 캐시 워밍 겸용: 매분 recompute가 보유 종목 일봉 캐시를 리필 → /me·관심종목 조회 상시 히트
-//   (docs/market-data-strategy.md A-2). "마감 후 1회 스냅샷"은 Task 8의 16:05 ET 별도 크론 소관 —
+//   (docs/market-data-strategy.md A-2). "마감 후 1회 스냅샷"은 16:05 ET 별도 크론 소관 —
 //   여기서는 open→closed 전이를 감지하지 않고 isMarketOpen 가드만 둔다.
 const cron = require('node-cron');
 const { isMarketOpen } = require('../config/marketHours');
@@ -27,7 +27,7 @@ const waitForIdle = async (timeoutMs = 5 * 60 * 1000, intervalMs = 5000) => {
 const tick = async () => {
   if (!isMarketOpen()) return; // 장외: 조용히 skip (스펙 Success Criteria)
 
-  // 배치가 429 페이싱으로 최대 ~2분 걸릴 수 있음 → 다음 틱 skip이 정상 동작 (plan Task 7 설계 노트)
+  // 배치가 429 페이싱으로 최대 ~2분 걸릴 수 있음 → 다음 틱 skip이 정상 동작 
   if (running) {
     console.warn('[rankingScheduler] 직전 실행이 아직 진행 중 — 이번 틱 skip');
     return;
@@ -59,9 +59,9 @@ const tick = async () => {
   }
 };
 
-// 일일 스냅샷 (Task 8) — ET 마감 5분 후 평일 1회, 최종 recompute → DailyRankings + AccountAssetHistories.
+// 일일 스냅샷 — ET 마감 5분 후 평일 1회, 최종 recompute → DailyRankings + AccountAssetHistories.
 // 16:05엔 isMarketOpen()=false라 1분 틱과 겹치지 않고, 직전 틱 잔여분만 waitForIdle로 흡수.
-// caveat: marketHours가 미국 공휴일 미반영 → 휴장일에도 fire되어 평탄한 스냅샷 1행 (뼈대 허용, plan Task 8)
+// caveat: marketHours가 미국 공휴일 미반영 → 휴장일에도 fire되어 평탄한 스냅샷 1행 (허용, 공휴일 가드는 후속)
 const snapshotTick = async () => {
   if (!(await waitForIdle())) {
     console.error('[dailySnapshot] 1분 틱이 5분째 미완료 — 스냅샷 중단 (다음 거래일에 재시도)');
