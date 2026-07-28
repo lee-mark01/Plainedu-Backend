@@ -61,7 +61,7 @@ const tick = async () => {
 
 // 일일 스냅샷 — ET 마감 5분 후 평일 1회, 최종 recompute → DailyRankings + AccountAssetHistories.
 // 16:05엔 isMarketOpen()=false라 1분 틱과 겹치지 않고, 직전 틱 잔여분만 waitForIdle로 흡수.
-// caveat: marketHours가 미국 공휴일 미반영 → 휴장일에도 fire되어 평탄한 스냅샷 1행 (뼈대 허용, plan Task 8)
+// caveat: marketHours가 미국 공휴일 미반영 → 휴장일에도 fire되어 평탄한 스냅샷 1행 (허용, 공휴일 가드는 후속)
 const snapshotTick = async () => {
   if (!(await waitForIdle())) {
     console.error('[dailySnapshot] 1분 틱이 5분째 미완료 — 스냅샷 중단 (다음 거래일에 재시도)');

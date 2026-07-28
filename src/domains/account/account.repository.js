@@ -55,7 +55,7 @@ const updateAccountSchoolGroup = async (executor, accountId, schoolGroup) => {
   ]);
 };
 
-// --- valuation 모듈용 조회/갱신 (스펙: docs/specs/spec-account-valuation.md §4.3) ---
+// --- valuation 모듈용 조회/갱신 ---
 
 const findAccountById = async (executor, accountId) => {
   const [rows] = await executor.query('SELECT * FROM VirtualAccounts WHERE id = ?', [accountId]);
