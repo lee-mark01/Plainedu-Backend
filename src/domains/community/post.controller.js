@@ -33,7 +33,7 @@ const deletePost = async (req, res, next) => {
     const post_id = Number(req.params.id);
     const user_id = req.user.userId;
     await communityService.deletePost(post_id, user_id);
-    res.status(200).json({ success: true, message: 'Post deleted' });
+    res.status(200).json({ success: true, message: '게시글이 삭제되었습니다.' });
   } catch (err) {
     next(err);
   }

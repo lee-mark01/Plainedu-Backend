@@ -32,7 +32,7 @@ const deleteComment = async (req, res, next) => {
         const comment_id = Number(req.params.comment_id);
         const user_id = req.user.userId;
         await commentService.deleteComment(user_id, comment_id);
-        res.status(200).json({ success: true, message: 'Comment deleted' });
+        res.status(200).json({ success: true, message: '댓글이 삭제되었습니다.' });
     } catch (err) {
         next(err);
     }

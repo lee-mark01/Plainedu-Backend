@@ -1,4 +1,4 @@
-// GET /api/trading/orders — 내 주문내역 조회 (스펙: docs/specs/spec-account-valuation.md §5, D5)
+// GET /api/trading/orders — 내 주문내역 조회 
 // 체결 파트와의 충돌을 피하기 위해 컨트롤러/Joi 스키마/조회 쿼리를 이 파일에 동거시킨다.
 // (trading.repository.js·trading.validator.js 무수정 — trading.router.js에는 route 2줄만 추가)
 const Joi = require('joi');
