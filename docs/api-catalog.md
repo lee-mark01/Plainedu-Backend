@@ -138,12 +138,12 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | GET | `/api/ranking/individual?page=&limit=` | 🔒 | 개인 리더보드 — PersonalScore(수익률%), 동점 시 2차 참여율·3차 출석일 재정렬 (2026-07-21) |
-| GET | `/api/ranking/teams?page=&limit=` | 🔒 | 팀 리더보드 — TeamScore(Point 소수1) = R%×0.9 + Alignment×0.1(스텁 100 고정), R%·Alignment 분리 노출, 동점은 공동 순위 (2026-07-28) |
-| GET | `/api/ranking/schools?mode=individual\|team&page=&limit=` | 🔒 | 소속(학교) 리더보드 — 학교별 가중평균 org score. `mode=individual`: Σ(개인점수×참여율)/Σ참여율(단위 %) · `mode=team`: 팀점수 평균(단위 Point). 응답에 `unit` 포함, 동점은 공동 순위 (2026-07-28) |
-| GET | `/api/ranking/me` | 🔒 | 내 순위 요약 — `individual` + `team`(무소속 null) + `school_individual`·`school_team`(학교 미설정 null, 순위판 미등재는 rank null). 4개 섹션 전부 `rank_change` 포함 (2026-07-28) |
-| GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day (2026-07-21) |
+| GET | `/api/ranking/teams?page=&limit=` | 🔒 | 팀 리더보드 — TeamScore(Point 소수1) = R%×0.9 + Alignment×0.1(스텁 100 고정), R%·Alignment 분리 노출, 동점은 공동 순위  |
+| GET | `/api/ranking/schools?mode=individual\|team&page=&limit=` | 🔒 | 소속(학교) 리더보드 — 학교별 가중평균 org score. `mode=individual`: Σ(개인점수×참여율)/Σ참여율(단위 %) · `mode=team`: 팀점수 평균(단위 Point). 응답에 `unit` 포함, 동점은 공동 순위 |
+| GET | `/api/ranking/me` | 🔒 | 내 순위 요약 — `individual` + `team`(무소속 null) + `school_individual`·`school_team`(학교 미설정 null, 순위판 미등재는 rank null). 4개 섹션 전부 `rank_change` 포함 |
+| GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day |
 
-랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화도 구현 완료 (2026-07-28): 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) — 리더보드 3종 각 행에 `rank_change`(직전 스냅샷 대비, 없으면 null) 추가.
+랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화도 구현 완료 : 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) — 리더보드 3종 각 행에 `rank_change`(직전 스냅샷 대비, 없으면 null) 추가.
 
 ## 실시간 (Socket.IO)
 
@@ -160,7 +160,11 @@
 |---|---|---|
 | GET | `/api/health` | 헬스체크 |
 
+
+
+
 ---
+
 
 # 구현 필요 백로그 (코드에 없는 API)
 
@@ -172,14 +176,14 @@
 | API | 도메인 | 근거/비고 |
 |---|---|---|
 | 메인홈 집계 (기존 API 조합 or 별도 엔드포인트) | 미정 | plan 백로그 — 프론트와 협의 |
-| `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | **기록은 구현 완료 (2026-07-28)** — 일일 스냅샷이 AccountAssetHistories에 매일 UPSERT. 남은 건 **조회 API**만. 노출 화면 범위는 기획 확인 중 |
-| ~~`GET /api/ranking/season`~~ | ~~ranking~~ | ✅ **구현 완료 (2026-07-21)** — 위 ranking 표로 이동 |
+| `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 구현 완료 (2026-07-28) — 일일 스냅샷이 AccountAssetHistories에 매일 UPSERT. 남은 건 **조회 API**만. 노출 화면 범위는 기획 확인 중 |
+
 
 ## P2 — 화면상 필요한데 계획에 없음 (기획 확인 후 배분)
 
 | API | 도메인 | 왜 필요한가 |
 |---|---|---|
-| `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 팀 모드 화면 (2026-07-12 확정: 포트폴리오 도메인 이후 team 도메인에서 구현). **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
+| `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 팀 모드 화면 (포트폴리오 도메인 이후 team 도메인에서 구현). **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
 | `GET /api/users/me` · `PATCH /api/users/me` — 내 프로필 조회/수정(닉네임·학교) | user | 마이페이지 필수. 현재 user 도메인은 스텁 + 출석 API뿐 |
 | `GET /api/users/:id` — 타인 프로필 | user | 커뮤니티에서 작성자 클릭 시 |
 | `GET /api/teams/:id` — 팀 상세(팀원 목록·포지션) | team | 팀 랭킹에서 팀 클릭 시. TRADER 포지션 표시 |
