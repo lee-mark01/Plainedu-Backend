@@ -31,6 +31,10 @@ const isSymbolAlwaysOpen = (symbol) => typeof symbol === 'string' && symbol.incl
 // 심볼 기준 개장 여부: 24/7 마켓은 항상 개장, 미국 주식은 정규장 시간
 const isSymbolMarketOpen = (symbol) => isSymbolAlwaysOpen(symbol) || isMarketOpen();
 
+// ET 기준 금요일 여부 — 주간 Alignment 확정(금요일 종가) 트리거 판별용
+const isEtFriday = (date = new Date()) =>
+  new Intl.DateTimeFormat('en-US', { timeZone: ET_TIMEZONE, weekday: 'short' }).format(date) === 'Fri';
+
 // ET 기준 오늘 날짜 문자열 (YYYY-MM-DD) — 전일종가 판별 등에 사용
 const getEtDateString = (date = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
@@ -41,4 +45,4 @@ const getEtDateString = (date = new Date()) => {
   }).format(date);
 };
 
-module.exports = { isMarketOpen, isSymbolAlwaysOpen, isSymbolMarketOpen, getEtDateString };
+module.exports = { isMarketOpen, isSymbolAlwaysOpen, isSymbolMarketOpen, isEtFriday, getEtDateString };

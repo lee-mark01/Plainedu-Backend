@@ -2,7 +2,7 @@
 // ActiveDays는 Attendances(user 도메인, 시즌 범위 무관 누적 테이블)를 시즌 기간으로 직접 필터링해 센다.
 const pool = require('../../config/db');
 
-// 시즌 기간 내 출석일 수 — ActiveDays = 출석일 (스펙 §3, 2026-07-17 attendance 도메인 반영)
+// 시즌 기간 내 출석일 수 — ActiveDays = 출석일 
 // 미래 구간은 세지 않도록 종료 경계를 min(오늘, SeasonEnd)로 제한.
 // 출석 기록이 없는 유저도 0으로 채워 반환 (Map 조회 시 undefined 방지).
 const findActiveDaysByUserIds = async (userIds, seasonStart, seasonEnd, executor = pool) => {
@@ -17,6 +17,29 @@ const findActiveDaysByUserIds = async (userIds, seasonStart, seasonEnd, executor
     [userIds, seasonStart, seasonEnd]
   );
   rows.forEach((r) => map.set(r.user_id, r.active_days));
+  return map;
+};
+
+// 팀 ActiveDays = 팀원 출석일 평균 (팀은 출석 개념이 없어 팀원 평균으로 정의).
+// 출석 0인 팀원도 분모에 포함(COALESCE 0). 팀원이 없거나 미조회 팀은 0으로 채움.
+const findTeamAvgActiveDays = async (teamIds, seasonStart, seasonEnd, executor = pool) => {
+  const map = new Map(teamIds.map((id) => [id, 0]));
+  if (!teamIds.length) return map;
+
+  const [rows] = await executor.query(
+    `SELECT tm.team_id, AVG(COALESCE(a.days, 0)) AS avg_days
+     FROM TeamMembers tm
+     LEFT JOIN (
+       SELECT user_id, COUNT(*) AS days
+       FROM Attendances
+       WHERE attendance_date BETWEEN ? AND LEAST(CURDATE(), ?)
+       GROUP BY user_id
+     ) a ON a.user_id = tm.user_id
+     WHERE tm.team_id IN (?)
+     GROUP BY tm.team_id`,
+    [seasonStart, seasonEnd, teamIds]
+  );
+  rows.forEach((r) => map.set(r.team_id, Number(r.avg_days)));
   return map;
 };
 
@@ -94,6 +117,32 @@ const findSchoolProfiles = async (schoolIds, executor = pool) => {
   return map;
 };
 
+// 주간 Alignment 확정값 (금요일 종가 기준) — 팀당 시즌당 1행 UPSERT
+const upsertTeamAlignments = async (rows, executor = pool) => {
+  if (!rows.length) return 0;
+  const values = rows.map((r) => [r.team_id, r.season_id, r.alignment, r.priced_at]);
+  await executor.query(
+    `INSERT INTO TeamAlignments (team_id, season_id, alignment, priced_at)
+     VALUES ?
+     ON DUPLICATE KEY UPDATE alignment = VALUES(alignment), priced_at = VALUES(priced_at)`,
+    [values]
+  );
+  return rows.length;
+};
+
+// 팀별 저장된 Alignment 조회 — 행 없는 팀(Active MP 미보유·첫 금요일 전)은 Map 미포함 → 호출측 0 처리
+const findTeamAlignments = async (teamIds, seasonId, executor = pool) => {
+  const map = new Map();
+  if (!teamIds.length) return map;
+
+  const [rows] = await executor.query(
+    'SELECT team_id, alignment FROM TeamAlignments WHERE season_id = ? AND team_id IN (?)',
+    [seasonId, teamIds]
+  );
+  rows.forEach((r) => map.set(r.team_id, Number(r.alignment)));
+  return map;
+};
+
 // 일일 스냅샷 UPSERT — uq_dr_target_date(target_type, target_id, rank_date, season_id) 활용,
 // 같은 날 재실행 시 행 수 불변(멱등). alignment_score·participation_rate는 미정의 보드에서 NULL
 // (스텁 값을 영구 기록하지 않는다 — 2026-07-28 결정).
@@ -104,6 +153,7 @@ const upsertDailyRankings = async (rows, executor = pool) => {
     const values = rows.slice(i, i + UPSERT_CHUNK_SIZE).map((r) => [
       r.season_id,
       r.target_type,
+      r.school_group ?? null, // 그룹 리그 내 순위임을 명시 (과거 통합 시절 행은 NULL)
       r.target_id,
       r.rank_date,
       r.rank_position,
@@ -114,9 +164,10 @@ const upsertDailyRankings = async (rows, executor = pool) => {
     ]);
     await executor.query(
       `INSERT INTO DailyRankings
-         (season_id, target_type, target_id, rank_date, rank_position, return_rate, final_score, participation_rate, alignment_score)
+         (season_id, target_type, school_group, target_id, rank_date, rank_position, return_rate, final_score, participation_rate, alignment_score)
        VALUES ?
        ON DUPLICATE KEY UPDATE
+         school_group = VALUES(school_group),
          rank_position = VALUES(rank_position),
          return_rate = VALUES(return_rate),
          final_score = VALUES(final_score),
@@ -152,11 +203,14 @@ const findPrevRanks = async (seasonId, targetType, targetIds, beforeDate, execut
 
 module.exports = {
   findActiveDaysByUserIds,
+  findTeamAvgActiveDays,
   findUserProfiles,
   findTeamProfiles,
   findSchoolIdsByUserIds,
   findSchoolIdsByTeamIds,
   findSchoolProfiles,
+  upsertTeamAlignments,
+  findTeamAlignments,
   upsertDailyRankings,
   findPrevRanks,
 };
