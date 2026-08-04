@@ -17,22 +17,24 @@ const daysBetween = (fromStr, toStr) => {
   return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
 };
 
+// 리더보드 3종은 요청 유저의 그룹(고교/대학) 리그만 조회 — 그룹은 서버가 추론 (school_group 응답 포함)
+
 // GET /api/ranking/individual?page=&limit= — ZSET 미계산 시 빈 목록 + updated_at: null (스펙 §8)
 const getIndividualLeaderboard = async (req, res, next) => {
   try {
     const { page, limit } = req.validated;
-    const data = await rankingService.getIndividualLeaderboard({ page, limit });
+    const data = await rankingService.getIndividualLeaderboard(req.user.userId, { page, limit });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
 };
 
-// GET /api/ranking/teams?page=&limit= — TeamScore(Point)·R% 노출(Alignment는 스텁이라 미노출), 동점은 공동 순위
+// GET /api/ranking/teams?page=&limit= — TeamScore(Point)·R% 노출, 동점은 공동 순위
 const getTeamLeaderboard = async (req, res, next) => {
   try {
     const { page, limit } = req.validated;
-    const data = await rankingService.getTeamLeaderboard({ page, limit });
+    const data = await rankingService.getTeamLeaderboard(req.user.userId, { page, limit });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -43,7 +45,7 @@ const getTeamLeaderboard = async (req, res, next) => {
 const getSchoolLeaderboard = async (req, res, next) => {
   try {
     const { mode, page, limit } = req.validated;
-    const data = await rankingService.getSchoolLeaderboard({ mode, page, limit });
+    const data = await rankingService.getSchoolLeaderboard(req.user.userId, { mode, page, limit });
     res.json({ success: true, data });
   } catch (err) {
     next(err);

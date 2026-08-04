@@ -143,7 +143,7 @@
 | GET | `/api/ranking/me` | 🔒 | 내 순위 요약 — `individual` + `team`(무소속 null) + `school_individual`·`school_team`(학교 미설정 null, 순위판 미등재는 rank null). 4개 섹션 전부 `rank_change` 포함 |
 | GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day |
 
-랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화도 구현 완료 : 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) — 리더보드 3종 각 행에 `rank_change`(직전 스냅샷 대비, 없으면 null) 추가.
+랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화 구현 완료: 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) + 리더보드·/me `rank_change`. **고교/대학 리그 완전 분리** — 그룹은 서버가 유저 학교로 자동 판별(응답 `school_group`), 학교 미설정 유저는 리그 제외. 팀 참여율=팀원 출석 평균, Alignment=금요일 종가 주간 확정(MP 없으면 0). 상세: ranking-api.md.
 
 ## 실시간 (Socket.IO)
 

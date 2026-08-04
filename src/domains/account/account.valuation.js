@@ -164,6 +164,7 @@ const valuateSeasonAccounts = async (seasonId, { writeBack = false } = {}) => {
         account_type: account.account_type,
         user_id: account.user_id,
         team_id: account.team_id,
+        school_group: account.school_group, // 그룹 리그 분리 — 어느 보드에서 보호할지 식별
         stale_symbols: valuation.stale_symbols,
       });
       continue;
