@@ -14,10 +14,11 @@ const { hotListSchema } = require('./hot.validator');
 
 // 게시글 (조회: 공개 / 작성·수정·삭제: 인증 필요)
 router.post('/posts', authenticate, validate(createPostSchema), communityController.createPost);
+router.get('/posts/my', authenticate, validate(getPostsByCursorSchema, 'query'), communityController.getMyPosts);
+router.get('/posts/bookmarked', authenticate, interactionController.getBookmarkedPosts);
 router.get('/posts/:id', communityController.getPostById);
 router.get('/posts', validate(getPostsByCursorSchema, 'query'), communityController.getPostsByCursor);
 router.get('/stocks/search', validate(searchStocksSchema, 'query'), communityController.searchStocks);
-router.get('/posts/my', authenticate, validate(getPostsByCursorSchema, 'query'), communityController.getMyPosts);
 router.patch('/posts/:id', authenticate, validate(updatePostSchema), communityController.updatePost);
 router.delete('/posts/:id', authenticate, communityController.deletePost);
 

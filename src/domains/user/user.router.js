@@ -5,17 +5,19 @@ const attendanceController = require('./attendance.controller');
 const authenticate = require('../../middlewares/authenticate');
 const validate = require('../../middlewares/validate');
 const { attendanceQuerySchema } = require('./attendance.validator');
+const { updateProfileSchema } = require('./user.validator');
 
 // 예시: GET /api/users
 router.get('/', userController.getUsers);
 
-// 출석 체크인 (앱 접속 시 프론트가 명시적으로 호출)
+// ── 마이페이지 (PM-01, PM-03, AUTH-14) ──
+router.get('/me', authenticate, userController.getMe);
+router.patch('/me', authenticate, validate(updateProfileSchema), userController.updateMe);
+router.delete('/me', authenticate, userController.deleteMe);
+
+// ── 출석 ──
 router.post('/attendance/check-in', authenticate, attendanceController.checkIn);
-
-// 이번 주(월~일) 출석 + 연속학습일 (칭찬 화면용)
 router.get('/attendance/streak', authenticate, attendanceController.getStreak);
-
-// 월별 출석 조회
 router.get(
   '/attendance',
   authenticate,
