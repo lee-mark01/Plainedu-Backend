@@ -36,6 +36,9 @@
 | POST | `/api/users/attendance/check-in` | 🔒 | 출석 체크인 (앱 접속 시 프론트가 명시적으로 호출) |
 | GET | `/api/users/attendance/streak` | 🔒 | 이번 주(월~일) 출석 + 연속학습일 (칭찬 화면용) |
 | GET | `/api/users/attendance?year=&month=` | 🔒 | 월별 출석 조회 |
+| GET | `/api/users/me` | 🔒 | 마이페이지 프로필 (PM-01) — 닉네임·학교·팀·출석·포인트·리그순위·자산요약 |
+| PATCH | `/api/users/me` | 🔒 | 프로필 편집 (PM-03) — body `{ nickname }` |
+| DELETE | `/api/users/me` | 🔒 | 회원 탈퇴 (AUTH-14) — CASCADE로 관련 데이터 삭제 |
 
 ## school — 학교 (`/api/schools`)
 
@@ -73,7 +76,8 @@
 | POST | `/api/community/posts` | 🔒 | 게시글 작성 |
 | GET | `/api/community/posts/:id` | — | 게시글 단건 |
 | GET | `/api/community/posts?cursor=&limit=&post_type=&stock_code=&keyword=` | — | 게시글 목록 (커서 기반) |
-| GET | `/api/community/posts/my` | 🔒 | 내 게시글 ⚠️ 라우트 순서 버그: `/posts/:id`가 먼저 선언돼 `my`가 :id로 매칭됨 — 담당자 수정 필요 |
+| GET | `/api/community/posts/my` | 🔒 | 내 게시글 (라우트 순서 수정 완료) |
+| GET | `/api/community/posts/bookmarked` | 🔒 | 내 스크랩 목록 (PM-02) — 마이페이지 "저장한 콘텐츠" |
 | PATCH / DELETE | `/api/community/posts/:id` | 🔒 | 게시글 수정/삭제 |
 | GET | `/api/community/stocks/search?keyword=` | — | 게시글용 종목 검색 |
 | POST | `/api/community/posts/:post_id/comments` | 🔒 | 댓글 작성 |
@@ -183,13 +187,13 @@
 
 | API | 도메인 | 왜 필요한가 |
 |---|---|---|
-| `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 팀 모드 화면 (포트폴리오 도메인 이후 team 도메인에서 구현). **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
-| `GET /api/users/me` · `PATCH /api/users/me` — 내 프로필 조회/수정(닉네임·학교) | user | 마이페이지 필수. 현재 user 도메인은 스텁 + 출석 API뿐 |
+| `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 팀 모드 화면 (2026-07-12 확정: 포트폴리오 도메인 이후 team 도메인에서 구현). **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
+| ~~`GET /api/users/me` · `PATCH /api/users/me`~~ | ~~user~~ | ✅ **구현 완료** (2026-07-24) — 마이페이지 PM-01/PM-03 |
 | `GET /api/users/:id` — 타인 프로필 | user | 커뮤니티에서 작성자 클릭 시 |
 | `GET /api/teams/:id` — 팀 상세(팀원 목록·포지션) | team | 팀 랭킹에서 팀 클릭 시. TRADER 포지션 표시 |
 | `POST /api/teams/leave` (또는 DELETE) — 팀 탈퇴 | team | 가입만 있고 탈퇴 없음 |
-| `GET /api/learning/shortforms/saved` — 저장한 숏폼 목록 | learning | save 토글은 있는데 저장 목록 조회가 없음 (마이페이지 "저장한 콘텐츠") |
-| `GET /api/community/posts/bookmarked` — 내 스크랩 목록 | community | bookmark 토글은 있는데 목록 조회가 없음 |
+| `GET /api/learning/shortforms/saved` | learning | 마이페이지 "저장한 콘텐츠" — 콘텐츠(숏폼) 시딩 후 구현 |
+| ~~`GET /api/community/posts/bookmarked`~~ | ~~community~~ | ✅ **구현 완료** (2026-07-24) — PM-02 스크랩 목록 |
 | 로컬(이메일/비번) 회원가입·로그인 | auth | 기획 필요 여부 확인 — 현재 OAuth 3종만 |
 
 ## P3 — 편의/보강
@@ -198,4 +202,4 @@
 |---|---|---|
 | `GET /api/stocks/realtime-symbols` — 지정가 가능(실시간) 심볼 목록 | stock | 프론트가 주문 UI에서 지정가 허용 여부를 미리 알아야 함 (현재는 400 에러로만 알 수 있음) |
 | `GET /api/trading/orders/:id` — 주문 단건(체결 로그 포함) | trading | 주문 상세 화면이 생기면 |
-| `DELETE /api/users/me` — 회원 탈퇴 | user | 스토어 심사 시 필수 (계좌 CASCADE 정책 포함 설계 필요) |
+| ~~`DELETE /api/users/me` — 회원 탈퇴~~ | ~~user~~ | ✅ **구현 완료** (2026-07-24) — AUTH-14. FK CASCADE로 관련 데이터 자동 삭제 |

@@ -56,4 +56,9 @@ const recordPostView = async (user_id, post_id) => {
   }
 };
 
-module.exports = { togglePostLike, toggleCommentLike, toggleBookmark, recordPostView };
+// PM-02: 내 스크랩 목록
+const getBookmarkedPosts = async (user_id) => {
+  return interactionRepository.findBookmarkedPosts(user_id);
+};
+
+module.exports = { togglePostLike, toggleCommentLike, toggleBookmark, recordPostView, getBookmarkedPosts };
