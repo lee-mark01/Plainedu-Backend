@@ -1,0 +1,13 @@
+node_modules
+.env
+.git
+.github
+.claude
+.claude_cache*
+tests
+spikes
+docs
+reference
+uploads
+erd.md
+postman_collection.json
