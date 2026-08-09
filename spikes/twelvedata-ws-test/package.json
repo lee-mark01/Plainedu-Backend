@@ -1,0 +1,15 @@
+{
+  "name": "twelvedata-ws-test",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Spike: Twelve Data WebSocket 현재가 수신 테스트",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "scan": "node scan-symbols.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,391 @@
+{
+  "info": {
+    "name": "Plainedu Community API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/community" },
+    { "key": "userId", "value": "1" },
+    { "key": "postId", "value": "1" },
+    { "key": "commentId", "value": "1" },
+    { "key": "notificationId", "value": "1" },
+    { "key": "targetUserId", "value": "2" }
+  ],
+  "item": [
+    {
+      "name": "1. 게시글",
+      "item": [
+        {
+          "name": "종목토론 게시글 작성",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}},\n  \"post_type\": \"STOCK_DISCUSSION\",\n  \"stock_code\": \"005930\",\n  \"opinion\": \"BUY\",\n  \"title\": \"삼성전자 매수 의견\",\n  \"content\": \"반도체 사이클 회복 기대\"\n}"
+            }
+          }
+        },
+        {
+          "name": "일반 게시글 작성",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}},\n  \"post_type\": \"GENERAL\",\n  \"title\": \"일반 게시글 테스트\",\n  \"content\": \"일반 게시글 내용입니다\"\n}"
+            }
+          }
+        },
+        {
+          "name": "게시글 단건 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/posts/{{postId}}"
+          }
+        },
+        {
+          "name": "게시글 목록 (전체)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "게시글 목록 (종목토론 필터)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts?post_type=STOCK_DISCUSSION&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts"],
+              "query": [
+                { "key": "post_type", "value": "STOCK_DISCUSSION" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "게시글 목록 (종목코드 필터)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts?post_type=STOCK_DISCUSSION&stock_code=005930&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts"],
+              "query": [
+                { "key": "post_type", "value": "STOCK_DISCUSSION" },
+                { "key": "stock_code", "value": "005930" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "게시글 검색 (제목)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts?keyword=삼성&search_type=TITLE&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts"],
+              "query": [
+                { "key": "keyword", "value": "삼성" },
+                { "key": "search_type", "value": "TITLE" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "내가 쓴 게시글",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts?user_id={{userId}}&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts"],
+              "query": [
+                { "key": "user_id", "value": "{{userId}}" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "게시글 수정",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/posts/{{postId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"수정된 제목\",\n  \"content\": \"수정된 내용\"\n}"
+            }
+          }
+        },
+        {
+          "name": "게시글 삭제",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/posts/{{postId}}"
+          }
+        },
+        {
+          "name": "종목 검색",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/stocks/search?keyword=삼성&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["stocks", "search"],
+              "query": [
+                { "key": "keyword", "value": "삼성" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. 댓글",
+      "item": [
+        {
+          "name": "댓글 작성",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts/{{postId}}/comments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}},\n  \"content\": \"댓글 테스트입니다\"\n}"
+            }
+          }
+        },
+        {
+          "name": "대댓글 작성",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts/{{postId}}/comments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}},\n  \"parent_id\": {{commentId}},\n  \"content\": \"대댓글 테스트입니다\"\n}"
+            }
+          }
+        },
+        {
+          "name": "댓글 목록 조회",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/posts/{{postId}}/comments"
+          }
+        },
+        {
+          "name": "댓글 수정",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/comments/{{commentId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}},\n  \"content\": \"수정된 댓글입니다\"\n}"
+            }
+          }
+        },
+        {
+          "name": "댓글 삭제",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/comments/{{commentId}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. 좋아요 / 스크랩 / 조회수",
+      "item": [
+        {
+          "name": "게시글 좋아요 토글",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts/{{postId}}/like",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "댓글 좋아요 토글",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/comments/{{commentId}}/like",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "스크랩 토글",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts/{{postId}}/bookmark",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "조회수 기록",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/posts/{{postId}}/view",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. 핫 / 인기",
+      "item": [
+        {
+          "name": "핫 종목 목록",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/hot/stocks?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["hot", "stocks"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "인기 게시물 목록",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/hot/posts?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["hot", "posts"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. 팔로우",
+      "item": [
+        {
+          "name": "팔로우 / 언팔로우 토글",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/users/{{targetUserId}}/follow",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "팔로워 / 팔로잉 수",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/{{targetUserId}}/follow/counts"
+          }
+        },
+        {
+          "name": "팔로워 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/{{targetUserId}}/followers"
+          }
+        },
+        {
+          "name": "팔로잉 목록",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/users/{{targetUserId}}/followings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. 알림",
+      "item": [
+        {
+          "name": "알림 목록 조회",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/notifications?user_id={{userId}}&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "user_id", "value": "{{userId}}" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "알림 읽음 처리",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/notifications/{{notificationId}}/read",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        },
+        {
+          "name": "알림 전체 읽음",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/notifications/read-all",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": {{userId}}\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:3000/api/health"
+      }
+    }
+  ]
+}
