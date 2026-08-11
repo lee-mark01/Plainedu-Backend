@@ -1,4 +1,4 @@
-const { pool } = require('../../config/db');
+const pool = require('../../config/db');
 
 // 모든 repository 함수는 마지막 인자로 executor(pool 또는 트랜잭션 conn)를 받음.
 // 트랜잭션 밖 호출은 기본값(pool)으로 동작하고, 트랜잭션 안에서 호출 시 conn을 명시.

@@ -134,6 +134,19 @@ const upsertAssetHistories = async (executor, rows) => {
   );
 };
 
+// 자산 추이 조회 (오름차순 = 그래프 x축 순서).
+// 계좌는 시즌마다 새로 생기므로 account_id만으로 시즌 범위가 정해진다 → 기간 조건 불필요.
+const findAssetHistories = async (executor, accountId) => {
+  const [rows] = await executor.query(
+    `SELECT DATE_FORMAT(recorded_at, '%Y-%m-%d') AS date, total_equity, return_rate
+     FROM AccountAssetHistories
+     WHERE account_id = ?
+     ORDER BY recorded_at`,
+    [accountId]
+  );
+  return rows;
+};
+
 module.exports = {
   findActiveSeason,
   findSeasonById,
@@ -149,4 +162,5 @@ module.exports = {
   findDistinctHeldStockCodes,
   bulkUpdateEquity,
   upsertAssetHistories,
+  findAssetHistories,
 };

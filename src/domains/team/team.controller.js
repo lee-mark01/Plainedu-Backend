@@ -1,4 +1,6 @@
 const teamService = require('./team.service');
+const accountService = require('../account/account.service');
+const { buildAccountSummary } = require('../account/account.controller');
 
 const createTeam = async (req, res, next) => {
   try {
@@ -42,4 +44,24 @@ const getMyTeam = async (req, res, next) => {
   }
 };
 
-module.exports = { createTeam, joinTeam, listTeams, getMyTeam };
+// GET /api/teams/me/account — 팀 계좌 요약 + 보유 (TH-01/TT-01). 응답 형태는 /accounts/me와 동일
+const getMyTeamAccount = async (req, res, next) => {
+  try {
+    const account = await teamService.resolveMyTeamAccount(req.user.userId);
+    res.json({ success: true, data: await buildAccountSummary(account) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/teams/me/account/history — 팀 성과 추이 그래프 (TH-01)
+const getMyTeamAccountHistory = async (req, res, next) => {
+  try {
+    const account = await teamService.resolveMyTeamAccount(req.user.userId);
+    res.json({ success: true, data: await accountService.getAssetHistory(account) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { createTeam, joinTeam, listTeams, getMyTeam, getMyTeamAccount, getMyTeamAccountHistory };

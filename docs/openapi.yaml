@@ -1,0 +1,3586 @@
+openapi: 3.0.3
+
+info:
+  title: Plainedu API
+  version: 1.0.0
+  description: |
+    청소년·대학생 대상 투자 학습/모의투자 서비스 **Plainedu**의 REST API 명세.
+
+    - 이 문서는 [api-catalog.md](api-catalog.md)(전 도메인 API 목록)와 [api-conventions.md](api-conventions.md)(공통 규약)를 OpenAPI로 옮긴 것이다.
+    - **API를 추가/변경/삭제한 사람이 같은 PR에서 이 파일과 api-catalog.md를 함께 갱신한다.**
+    - 도메인별 상세 배경(산식·생명주기·Open Questions)은 [portfolio-api.md](portfolio-api.md), [ranking-api.md](ranking-api.md), [mypage-api.md](mypage-api.md), [stock-chart.md](stock-chart.md) 참조.
+
+    ## 공통 규약
+
+    **응답 봉투** — 성공 `{ "success": true, "data": ... }` / 실패 `{ "success": false, "message": "...", "code": "..." }`
+    (`message`는 항상 한국어 문장이라 프론트가 그대로 노출 가능. `code`는 분기가 필요한 에러에만 부여)
+
+    일부 레거시 엔드포인트는 `data` 없이 `{ success: true }` 또는 `{ success: true, message }`만 반환한다 —
+    각 응답 스키마에 표기해 두었으니 프론트와 합의 없이 바꾸지 말 것.
+
+    **인증** — `Authorization: Bearer {accessToken}`.
+    401 + `TOKEN_EXPIRED`면 `POST /api/auth/refresh`로 재발급, `TOKEN_INVALID`면 재로그인.
+
+    **검증** — Joi + `validate` 미들웨어. 실패 시 **400 + 첫 번째 에러 메시지**(code 없음).
+    body·query·params 필드명은 `snake_case`가 원칙이나, learning·attendance 등 일부 도메인의 **응답**은
+    `camelCase`를 쓴다(기존 프론트 연동 유지). 각 스키마의 실제 필드명을 따를 것.
+
+    **페이지네이션** — 두 방식이 공존한다.
+    · offset(`?page=&limit=` → `pagination: { page, limit, total }`) — 총 개수가 필요한 목록(주문·랭킹)
+    · cursor(`?cursor=&limit=` → `hasNext`) — 무한 스크롤(커뮤니티 피드)
+
+    **시간** — DB TIMESTAMP(UTC) → JSON ISO 8601 문자열. `DATE` 컬럼은 드라이버가 `Date`로 변환하므로
+    별도 포맷팅이 없는 곳(예: 월별 출석의 `attendanceDates`)은 ISO date-time으로 내려간다.
+
+    **실시간(Socket.IO)** — 시세 틱은 REST가 아니라 Socket.IO로 전달된다(OpenAPI 표현 불가).
+    계약은 [stock-chart.md](stock-chart.md#socketio-실시간-계약) 참조:
+    `subscribe`/`unsubscribe`(C→S), `subscribed`/`subscribe-error`/`price`/`resync`(S→C).
+
+  contact:
+    name: Plainedu Backend
+    url: https://github.com/Plain-edu/Plainedu-Backend
+  license:
+    name: ISC
+
+servers:
+  - url: http://localhost:3000
+    description: 로컬 개발 서버
+  - url: /
+    description: 배포 서버 (동일 오리진)
+
+tags:
+  - name: auth
+    description: OAuth 로그인 · 토큰 재발급/무효화
+  - name: user
+    description: 마이페이지 프로필 · 출석
+  - name: school
+    description: 학교 검색 · 커리어넷 동기화
+  - name: team
+    description: 팀 생성/가입 · 팀 계좌
+  - name: learning
+    description: 학습(숏폼·퀴즈). 전 라우트 인증 필수.
+  - name: community
+    description: 게시글 · 댓글 · 좋아요/스크랩 · 팔로우 · 알림
+  - name: stock
+    description: 종목 검색 · 관심종목 · 시세 차트/현재가
+  - name: trading
+    description: 모의투자 주문 (개인 · 팀)
+  - name: account
+    description: 가상계좌 평가 · 자산 추이
+  - name: portfolio
+    description: 모델포트폴리오(MP) 작성·투표·전략 준수도
+  - name: ranking
+    description: 시즌 리그 (개인 · 팀 · 소속 2종)
+  - name: system
+    description: 헬스체크
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ───────────────────────────── auth ─────────────────────────────
+  /api/auth/kakao:
+    post:
+      tags: [auth]
+      summary: 카카오 로그인
+      description: |
+        인가 코드를 카카오 토큰으로 교환해 프로필을 조회하고, 가입/로그인 후 토큰 쌍을 발급한다.
+        로그인마다 개인 가상계좌 존재를 보장한다(없으면 생성).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthCodeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/LoginOk' }
+        '201': { $ref: '#/components/responses/LoginCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403':
+          description: 카카오 이메일 제공 미동의 (`EMAIL_REQUIRED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 다른 소셜 계정으로 이미 가입됨 (`PROVIDER_CONFLICT`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/naver:
+    post:
+      tags: [auth]
+      summary: 네이버 로그인
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/OAuthCodeRequest'
+                - type: object
+                  properties:
+                    state:
+                      type: string
+                      description: 네이버 CSRF state 값
+                      example: 'RANDOM_STATE'
+      responses:
+        '200': { $ref: '#/components/responses/LoginOk' }
+        '201': { $ref: '#/components/responses/LoginCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: 다른 소셜 계정으로 이미 가입됨 (`PROVIDER_CONFLICT`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/google:
+    post:
+      tags: [auth]
+      summary: 구글 로그인
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OAuthCodeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/LoginOk' }
+        '201': { $ref: '#/components/responses/LoginCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: 다른 소셜 계정으로 이미 가입됨 (`PROVIDER_CONFLICT`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      summary: 액세스 토큰 재발급
+      description: |
+        리프레시 토큰을 회전(rotate)시키며 새 토큰 쌍을 발급한다.
+        슬라이딩 만료 7일 · 절대 만료 90일(최초 발급 기준 고정).
+        **이미 소비된 토큰이 다시 들어오면 탈취로 간주해 해당 계보(family) 전체를 폐기**한다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200':
+          description: 재발급 성공
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TokenPair' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: |
+            `REFRESH_TOKEN_INVALID` · `REFRESH_TOKEN_EXPIRED` · `TOKEN_REUSE_DETECTED` → 모두 재로그인
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: 로그아웃 (리프레시 토큰 계보 폐기)
+      description: 존재하지 않는 토큰이어도 200 (멱등).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /auth/{provider}/callback:
+    get:
+      tags: [auth]
+      summary: OAuth 리다이렉트 콜백 (테스트용)
+      description: |
+        `KAKAO_REDIRECT_URI` 등 제공사 콘솔에 등록된 리다이렉트 URI를 그대로 받는 엔드포인트.
+        **`/api` prefix가 없다.** 프론트를 경유하지 않고 브라우저에서 바로 로그인 흐름을 확인할 때 쓴다.
+        응답 본문은 `POST /api/auth/{provider}`와 동일 — 리다이렉트하지 않고 JSON을 그대로 반환한다.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [kakao, naver, google]
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+          description: 제공사가 붙여주는 인가 코드
+        - name: state
+          in: query
+          schema: { type: string }
+          description: 네이버 전용 CSRF state
+      responses:
+        '200': { $ref: '#/components/responses/LoginOk' }
+        '201': { $ref: '#/components/responses/LoginCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ───────────────────────────── user ─────────────────────────────
+  /api/users:
+    get:
+      tags: [user]
+      summary: '[스텁] 유저 목록'
+      description: 예시 수준의 스텁이다. 실서비스 화면에서 쓰지 않는다.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/UserBrief' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/me:
+    get:
+      tags: [user]
+      summary: 마이페이지 프로필 (PM-01)
+      description: |
+        프로필 카드(닉네임·소속·역할) + 활동 요약(연속학습·포인트·리그순위) + 자산 요약을 한 번에 반환한다.
+        `league_rank`는 ranking 도메인 조회 결과로, 순위판 미계산·학교 미설정 시 `null`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MyProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [user]
+      summary: 프로필 편집 (PM-03)
+      description: |
+        **닉네임만** 변경할 수 있다. `school_id`·`position`은 이 API로 바꿀 수 없다
+        (학교 인증 PM-04/AUTH-07 미구현 — api-catalog.md 백로그 P1 참조).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nickname]
+              properties:
+                nickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  example: 새닉네임
+      responses:
+        '200':
+          description: 수정된 유저 기본 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/UserBasic' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [user]
+      summary: 회원 탈퇴 (AUTH-14)
+      description: FK CASCADE로 계좌·주문·출석·팀 멤버십·게시글·알림 등이 함께 삭제된다. 복구 불가.
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 회원 탈퇴가 완료되었습니다.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/attendance/check-in:
+    post:
+      tags: [user]
+      summary: 출석 체크인
+      description: |
+        앱 접속 시 프론트가 **명시적으로** 호출한다(GET에 부수효과를 두지 않기 위해 분리).
+        오늘 이미 출석했으면 아무것도 하지 않고 200 (멱등).
+        직전 출석과 하루 차이면 `consecutive_days`가 이어지고, 그 이상이면 1로 리셋된다.
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 출석 처리되었습니다.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/attendance/streak:
+    get:
+      tags: [user]
+      summary: 이번 주 출석 + 연속학습일
+      description: 칭찬 화면(퀴즈 완료 후 등)용. 이번 주 **월~일 7칸** 체크리스트를 항상 채워서 내려준다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AttendanceStreak' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/attendance:
+    get:
+      tags: [user]
+      summary: 월별 출석 조회
+      description: '`year`·`month`는 **둘 다 보내거나 둘 다 생략**해야 한다(하나만 오면 400). 생략 시 이번 달.'
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer, minimum: 2020, maximum: 2100 }
+          example: 2026
+        - name: month
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          example: 8
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MonthlyAttendance' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ──────────────────────────── school ────────────────────────────
+  /api/schools:
+    get:
+      tags: [school]
+      summary: 학교 검색
+      description: 커리어넷에서 동기화한 학교 데이터를 검색한다. 조건 없이 호출하면 이름순 상위 `limit`건.
+      security: []
+      parameters:
+        - name: keyword
+          in: query
+          schema: { type: string, maxLength: 100 }
+          description: 학교명 부분 일치
+          example: 연세
+        - name: region
+          in: query
+          schema: { type: string, maxLength: 50 }
+          description: 지역 완전 일치
+          example: 서울
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/School' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/schools/sync:
+    post:
+      tags: [school]
+      summary: 커리어넷 학교 동기화 (관리자 전용)
+      description: |
+        커리어넷 오픈 API를 페이지 순회하며 `schools` 테이블에 upsert 한다.
+        `(school_name, region)` UNIQUE 기준이라 재실행해도 안전(멱등).
+        **`role = ADMIN`이 아니면 403.** 전체 동기화는 수 분이 걸릴 수 있다.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gubuns:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum: [elem_list, midd_list, high_list, univ_list]
+                  description: '생략 시 서비스 기본값 `[high_list, univ_list]`'
+            example:
+              gubuns: [high_list, univ_list]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SchoolSyncResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 관리자 권한 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ───────────────────────────── team ─────────────────────────────
+  /api/teams:
+    post:
+      tags: [team]
+      summary: 팀 생성
+      description: |
+        팀과 팀 계좌를 함께 만들고 요청자를 `LEADER`로 등록한다. 요청자의 `position`도 함께 갱신된다.
+        **선행 조건: 학교 인증 완료**(`school_id` + `school_is_verified`) — 미인증이면 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, position]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 50, example: Investars }
+                position: { $ref: '#/components/schemas/Position' }
+                max_member_count:
+                  type: integer
+                  minimum: 2
+                  maximum: 8
+                  default: 4
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 학교 인증 필요
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 이미 팀에 소속됨 / 같은 학교에 동명 팀 존재
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [team]
+      summary: 같은 학교 팀 목록/검색
+      description: '**요청자와 같은 학교** 팀만 반환한다. `page`는 없다(limit만).'
+      parameters:
+        - name: keyword
+          in: query
+          schema: { type: string, maxLength: 50 }
+          description: 팀명 부분 일치
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TeamListItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 학교 인증 필요
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/join:
+    post:
+      tags: [team]
+      summary: 팀 가입
+      description: '가입 코드(8자)로 참여한다. **같은 학교 팀만** 가능. 요청자의 `position`도 함께 갱신된다.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [join_code, position]
+              properties:
+                join_code:
+                  type: string
+                  minLength: 8
+                  maxLength: 8
+                  description: 대문자로 정규화되어 처리된다
+                  example: A1B2C3D4
+                position: { $ref: '#/components/schemas/Position' }
+      responses:
+        '200':
+          description: 가입 완료 (팀 상세 반환)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 학교 인증 필요 / 다른 학교의 팀
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: 유효하지 않은 가입 코드
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: 이미 팀 소속 / 정원 초과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me:
+    get:
+      tags: [team]
+      summary: 내 팀 조회
+      description: |
+        ⚠️ `members[]`에는 팀 내 권한인 `role`(LEADER/MEMBER)만 있고
+        투자 포지션 `position`(TRADER/ANALYST)은 없다 (api-catalog.md 백로그 P2 참조).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 소속된 팀이 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/account:
+    get:
+      tags: [team, account]
+      summary: 팀 계좌 요약 + 보유종목 (TH-01/TT-01)
+      description: |
+        응답 스키마가 `GET /api/accounts/me`와 **완전히 동일**하다 —
+        프론트 상단 Scope 토글(개인↔팀)에서 같은 컴포넌트를 재사용하도록 일부러 맞췄다.
+      responses:
+        '200': { $ref: '#/components/responses/AccountSummaryOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/account/history:
+    get:
+      tags: [team, account]
+      summary: 팀 성과 추이 (TH-01)
+      description: '`GET /api/accounts/me/history`와 동일 스키마.'
+      responses:
+        '200': { $ref: '#/components/responses/AssetHistoryOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ─────────────────────────── learning ───────────────────────────
+  /api/learning/topics:
+    get:
+      tags: [learning]
+      summary: 학습 메인 (주제 목록 + 진행현황 + 오늘의 플로우 + 레벨)
+      parameters:
+        - name: level
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10, default: 1 }
+          description: 조회할 레벨
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/LearningHome' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/topics/{topicId}/shortforms:
+    get:
+      tags: [learning]
+      summary: 숏폼 목록 (좋아요/저장/완료 상태 포함)
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ShortformList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 주제 (`TOPIC_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/shortforms/{shortformId}/complete:
+    post:
+      tags: [learning]
+      summary: 숏폼 시청 완료
+      description: 해당 주제의 숏폼을 전부 완료하면 `UserProgress.is_shortform_done`이 켜지고 퀴즈가 열린다.
+      parameters:
+        - $ref: '#/components/parameters/ShortformId'
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 시청 완료 처리되었습니다.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 숏폼 (`SHORTFORM_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/shortforms/{shortformId}/like:
+    patch:
+      tags: [learning]
+      summary: 숏폼 좋아요 토글
+      parameters:
+        - $ref: '#/components/parameters/ShortformId'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          isLiked: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 숏폼 (`SHORTFORM_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/shortforms/{shortformId}/save:
+    patch:
+      tags: [learning]
+      summary: 숏폼 저장 토글
+      parameters:
+        - $ref: '#/components/parameters/ShortformId'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          isSaved: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 숏폼 (`SHORTFORM_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/topics/{topicId}/quizzes:
+    get:
+      tags: [learning]
+      summary: 퀴즈 문제 조회
+      description: '**숏폼 선행 완료 필수** — 미완료 시 403 `SHORTFORM_NOT_COMPLETED`(프론트는 숏폼 화면으로 유도).'
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/QuizList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 숏폼 미완료 (`SHORTFORM_NOT_COMPLETED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: 존재하지 않는 주제 (`TOPIC_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/quizzes/{quizId}/answer:
+    post:
+      tags: [learning]
+      summary: 퀴즈 단건 채점
+      description: |
+        1문제 풀이 직후 즉시 채점한다. 재도전을 허용하므로 같은 퀴즈에 여러 로그가 쌓일 수 있다.
+
+        `answer` 형식은 퀴즈 `type`에 따라 다르다:
+        | type | answer |
+        |---|---|
+        | `CHOICE` | 선택지 번호 (number) |
+        | `OX` | `"O"` 또는 `"X"` |
+        | `SHORT` | 문자열 (공백·대소문자 무시 비교, 복수 정답 허용) |
+        | `MATCH` | 문자열 배열 (순서 무관) |
+      parameters:
+        - $ref: '#/components/parameters/QuizId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer]
+              properties:
+                answer:
+                  oneOf:
+                    - type: string
+                    - type: number
+                    - type: array
+                      items: { type: string }
+                  example: 2
+      responses:
+        '200':
+          description: 채점 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/QuizAnswerResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 퀴즈 (`QUIZ_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/topics/{topicId}/quizzes/complete:
+    post:
+      tags: [learning]
+      summary: 퀴즈 세션 완료 (결과 페이지)
+      description: '주제의 **모든 문제를 한 번씩은** 풀어야 완료된다. 미완이면 400 `QUIZ_NOT_FINISHED`.'
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: 세션 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/QuizSessionResult' }
+        '400':
+          description: 아직 풀지 않은 문제가 있음 (`QUIZ_NOT_FINISHED`) 또는 검증 실패
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 주제 없음 (`TOPIC_NOT_FOUND`) / 주제에 퀴즈 없음 (`QUIZ_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ─────────────────────────── community ──────────────────────────
+  /api/community/posts:
+    post:
+      tags: [community]
+      summary: 게시글 작성
+      description: 작성자의 팔로워 전원에게 `FOLLOWEE_POST` 알림이 발송된다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePostRequest' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Post' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [community]
+      summary: 게시글 목록 (커서 기반)
+      description: |
+        무한 스크롤용. 다음 페이지는 마지막 항목의 `id`를 `cursor`로 넘긴다(내림차순).
+
+        ⚠️ `keyword`와 `search_type`은 **반드시 함께** 보내야 한다 (Joi `.and()` — 하나만 오면 400).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: post_type
+          in: query
+          schema: { $ref: '#/components/schemas/PostType' }
+        - name: stock_code
+          in: query
+          schema: { type: string }
+          example: AAPL
+        - name: keyword
+          in: query
+          schema: { type: string }
+          description: '`search_type`과 함께 보낼 것'
+        - name: search_type
+          in: query
+          schema:
+            type: string
+            enum: [TITLE, CONTENT, AUTHOR]
+          description: '`keyword`와 함께 보낼 것'
+      responses:
+        '200': { $ref: '#/components/responses/PostPageOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/my:
+    get:
+      tags: [community]
+      summary: 내 게시글 목록 (커서 기반)
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { $ref: '#/components/responses/PostPageOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/bookmarked:
+    get:
+      tags: [community]
+      summary: 내 스크랩 목록 (PM-02)
+      description: 마이페이지 "저장한 콘텐츠". 스크랩 시각 역순. 페이지네이션 없음.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/BookmarkedPost' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/{id}:
+    get:
+      tags: [community]
+      summary: 게시글 단건 조회
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Post' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [community]
+      summary: 게시글 수정
+      description: 본인 글만 수정 가능. 보낸 필드만 갱신된다(최소 1개 필수).
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                title: { type: string, minLength: 1 }
+                content: { type: string, minLength: 1 }
+                opinion: { $ref: '#/components/schemas/Opinion' }
+      responses:
+        '200':
+          description: 수정된 게시글
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Post' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [community]
+      summary: 게시글 삭제 (소프트 삭제)
+      parameters:
+        - $ref: '#/components/parameters/PostIdPath'
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 게시글이 삭제되었습니다.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/stocks/search:
+    get:
+      tags: [community]
+      summary: 게시글 작성용 종목 검색
+      description: '`GET /api/stocks/search`와 동일한 데이터를 반환한다(커뮤니티 화면 전용 경로).'
+      security: []
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { $ref: '#/components/responses/StockListOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/{post_id}/comments:
+    post:
+      tags: [community]
+      summary: 댓글 작성
+      description: |
+        `parent_id`를 주면 대댓글이 된다(2단까지). 게시글 `comment_count`가 +1 된다.
+        알림: 대댓글이면 부모 댓글 작성자에게 `COMMENT_REPLY`, 아니면 게시글 작성자에게 `POST_COMMENT`.
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, example: 좋은 분석 감사합니다 }
+                parent_id:
+                  type: integer
+                  nullable: true
+                  description: 대댓글일 때 부모 댓글 id
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 게시글 또는 부모 댓글 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [community]
+      summary: 댓글 목록 (댓글 → 대댓글 2단 트리)
+      description: |
+        각 노드에 `is_deleted`가 포함된다.
+        `true`면 **답글이 남아 있어 자리표시로 내려온 삭제 댓글**이라 `content`·`author_nickname`이 `null`이다
+        → 프론트는 "삭제된 댓글입니다"로 렌더할 것.
+        답글까지 전부 삭제된 가지는 응답에서 아예 빠진다.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CommentNode' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/comments/{comment_id}:
+    patch:
+      tags: [community]
+      summary: 댓글 수정
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        '200':
+          description: 수정된 댓글
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [community]
+      summary: 댓글 삭제 (소프트 삭제)
+      description: '게시글 `comment_count`가 −1 된다. **답글 수는 유지**된다.'
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 댓글이 삭제되었습니다.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/{post_id}/like:
+    post:
+      tags: [community]
+      summary: 게시글 좋아요 토글
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          liked: { type: boolean, example: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/comments/{comment_id}/like:
+    post:
+      tags: [community]
+      summary: 댓글 좋아요 토글
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          liked: { type: boolean, example: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/{post_id}/bookmark:
+    post:
+      tags: [community]
+      summary: 게시글 스크랩 토글
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          bookmarked: { type: boolean, example: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/posts/{post_id}/view:
+    post:
+      tags: [community]
+      summary: 조회수 기록
+      description: '유저당 1회만 집계된다(중복 호출은 무시). 응답에 `data`가 없다.'
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/hot/stocks:
+    get:
+      tags: [community]
+      summary: 핫 종목
+      description: '최근 7일 종목토론글 기준. `score = 글 수 + 댓글 수 + 좋아요 수`.'
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HotLimit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/HotStock' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/hot/posts:
+    get:
+      tags: [community]
+      summary: 인기 게시글
+      description: '최근 7일 기준. `score = 좋아요×3 + 댓글×2 + 조회수`.'
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/HotLimit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PopularPost' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/users/{user_id}/follow:
+    post:
+      tags: [community]
+      summary: 팔로우 토글
+      description: 자기 자신은 팔로우할 수 없다(400).
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200':
+          description: 토글 후 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          followed: { type: boolean, example: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/users/{user_id}/follow/counts:
+    get:
+      tags: [community]
+      summary: 팔로워/팔로잉 수
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          followerCount: { type: integer, example: 12 }
+                          followingCount: { type: integer, example: 8 }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/users/{user_id}/followers:
+    get:
+      tags: [community]
+      summary: 팔로워 목록
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200': { $ref: '#/components/responses/FollowListOk' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/users/{user_id}/followings:
+    get:
+      tags: [community]
+      summary: 팔로잉 목록
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      responses:
+        '200': { $ref: '#/components/responses/FollowListOk' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/notifications:
+    get:
+      tags: [community]
+      summary: 알림 목록 (최신순)
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Notification' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/notifications/read-all:
+    patch:
+      tags: [community]
+      summary: 알림 전체 읽음 처리
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/notifications/{notification_id}/read:
+    patch:
+      tags: [community]
+      summary: 알림 단건 읽음 처리
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 알림 없음 (본인 알림이 아닌 경우 포함)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ───────────────────────────── stock ────────────────────────────
+  /api/stocks/search:
+    get:
+      tags: [stock]
+      summary: 종목 검색
+      description: '`Stocks` 테이블에서 종목명 또는 코드 부분 일치 검색 (검색바용). `ACTIVE` 종목만.'
+      security: []
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 50 }
+          example: apple
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200': { $ref: '#/components/responses/StockListOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/watchlist:
+    get:
+      tags: [stock]
+      summary: 내 관심종목 목록 (현재가 포함)
+      description: '시세 조회에 실패한 종목은 `price`·`change`·`changePercent`가 `null`로 내려온다 — 목록 자체는 항상 200.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/WatchlistItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [stock]
+      summary: 관심종목 등록
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stock_code]
+              properties:
+                stock_code:
+                  type: string
+                  maxLength: 20
+                  description: 대문자로 정규화되어 처리된다
+                  example: AAPL
+      responses:
+        '201':
+          description: 등록됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Stock' }
+        '400':
+          description: 존재하지 않거나 거래 불가(ACTIVE 아님) 종목 / 검증 실패
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: 이미 등록된 관심종목
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/watchlist/{stock_code}:
+    delete:
+      tags: [stock]
+      summary: 관심종목 해제
+      parameters:
+        - name: stock_code
+          in: path
+          required: true
+          schema: { type: string, maxLength: 20 }
+          example: AAPL
+      responses:
+        '200':
+          description: 해제됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          stock_code: { type: string, example: AAPL }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 관심종목에 없는 종목
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/{symbol}/chart:
+    get:
+      tags: [stock]
+      summary: 시세 차트
+      description: |
+        Twelve Data `time_series` + Redis 캐시. **차트 데이터는 DB에 저장하지 않는다.**
+
+        `time` 포맷은 Lightweight Charts 입력 규격 그대로다 —
+        일봉 이상(`3M`/`1Y`/`5Y`/`ALL`)은 `"YYYY-MM-DD"` 문자열, 분봉(`1D`/`1W`)은 **unix 초(UTC)**.
+        변환 없이 `setData()`에 바로 넣을 수 있고, 분봉의 `time`은 Socket.IO 틱의 `timestamp`와 같은 기준이다.
+
+        **과거 드래그(lazy 로딩)** 는 분봉(`1D`/`1W`)만 지원한다 —
+        보유한 가장 오래된 봉의 `time`을 `before`로 넘기면 그 이전 구간을 반환한다(중복 제거됨).
+
+        소수 반올림은 프론트 담당(백엔드는 원시 숫자 유지). `high`/`low`는 요청 구간의 최고/최저.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: ['1D', '1W', '3M', '1Y', '5Y', 'ALL']
+            default: '1D'
+        - name: before
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: '분봉 lazy 로딩 기준점 (unix 초). 일봉 이상에서는 불필요.'
+          example: 1783026900
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Chart' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: 존재하지 않는 심볼
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: 외부 시세 제공사 크레딧 소진
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: 외부 시세 제공사 오류
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: 외부 시세 제공사 연결 실패
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/stocks/{symbol}/quote:
+    get:
+      tags: [stock]
+      summary: 현재가 + 등락률
+      description: 헤더 초기값용. 이후 갱신은 Socket.IO `price` 이벤트로 받는다.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Quote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: 존재하지 않는 심볼
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: 외부 시세 제공사 크레딧 소진
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: 외부 시세 제공사 오류
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ──────────────────────────── trading ───────────────────────────
+  /api/trading/orders:
+    get:
+      tags: [trading]
+      summary: 내 주문내역 (개인 계좌)
+      parameters:
+        - $ref: '#/components/parameters/OrderStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { $ref: '#/components/responses/OrderPageOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [trading]
+      summary: 주문 생성 (개인 계좌)
+      description: |
+        - **시장가(MARKET)**: 조회한 현재가로 **즉시 체결**된다(응답 `order.status = COMPLETED`).
+        - **지정가(LIMIT)**: 실시간 틱이 들어오는 종목(`REALTIME_SYMBOLS`)에서만 허용된다.
+          접수 시점에 이미 크로스면 즉시 체결, 아니면 `PENDING`으로 남아 틱 매칭 엔진이 체결한다.
+          실시간 미제공 종목이면 400 `LIMIT_SYMBOL_NOT_SUPPORTED`.
+        - 현금/보유수량 부족은 400 `INSUFFICIENT_FUNDS` / `INSUFFICIENT_HOLDINGS`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 접수됨 (즉시 체결 시에도 201)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PlaceOrderResult' }
+        '400':
+          description: |
+            검증 실패 / 거래 불가 종목 / `LIMIT_SYMBOL_NOT_SUPPORTED` /
+            `INSUFFICIENT_FUNDS` / `INSUFFICIENT_HOLDINGS`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/trading/orders/{id}:
+    delete:
+      tags: [trading]
+      summary: 대기(PENDING) 주문 취소
+      description: '`FOR UPDATE` 잠금으로 틱 매칭과의 레이스를 막는다. 이미 체결/취소된 주문은 409.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: 취소됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: integer, example: 42 }
+                          status: { type: string, example: CANCELED }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 타인의 주문
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: PENDING이 아닌 주문 (`ORDER_NOT_CANCELABLE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/trading/team/queue:
+    get:
+      tags: [trading]
+      summary: 팀 실행 대기열 (TO-01)
+      description: |
+        Active MP 대비 종목별 비중 괴리와 전략 준수도(Alignment)를 반환한다 —
+        Trader가 어떤 주문을 넣어야 하는지 판단하는 근거.
+        **Active MP가 없으면** 전 필드 `null` + 빈 `items`로 200을 반환한다(404 아님).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ExecutionQueue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/trading/team/orders:
+    get:
+      tags: [trading]
+      summary: 팀 주문 내역 (TO-03)
+      description: 팀원이면 포지션과 무관하게 조회 가능.
+      parameters:
+        - $ref: '#/components/parameters/OrderStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { $ref: '#/components/responses/OrderPageOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [trading]
+      summary: 팀 계좌 주문 실행 (TO-02)
+      description: |
+        요청 body와 체결 규칙은 개인 주문과 동일하고, 대상 계좌만 팀 계좌다.
+        **Trader 포지션만 실행할 수 있다** — 아니면 403 `TRADER_ONLY` (TO-04).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceOrderRequest' }
+      responses:
+        '201':
+          description: 접수됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PlaceOrderResult' }
+        '400':
+          description: |
+            검증 실패 / 거래 불가 종목 / `LIMIT_SYMBOL_NOT_SUPPORTED` /
+            `INSUFFICIENT_FUNDS` / `INSUFFICIENT_HOLDINGS`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음 / Trader가 아님 (`TRADER_ONLY`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ──────────────────────────── account ───────────────────────────
+  /api/accounts/me:
+    get:
+      tags: [account]
+      summary: 내 계좌 요약 + 보유종목 평가손익
+      description: |
+        **요청할 때마다 즉석 계산**한다(랭킹 점수와 계산 시점이 다르다 — ranking-api.md §4 참조).
+        계좌가 없으면 자동 생성 후 정상 응답한다(500 없음).
+
+        가격은 Redis 틱(`price:{symbol}`, TTL 60초) → 실패 시 `getQuote` 폴백 순으로 조회한다.
+        **끝내 실패한 종목은 평단가로 대체하고 `price_stale: true`** 로 표시되며,
+        계좌 단위로는 `has_stale_prices: true`가 된다.
+      responses:
+        '200': { $ref: '#/components/responses/AccountSummaryOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/accounts/me/history:
+    get:
+      tags: [account]
+      summary: 자산(수익률) 추이 (PI-01)
+      description: |
+        일일 스냅샷을 오름차순으로 전부 반환한다. **기간 파라미터가 없다** —
+        계좌가 시즌 단위(≤90일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 잘라 쓴다.
+
+        오늘 점은 마감 배치(평일 16:05 ET) 전까지 없다 →
+        라이브 값이 필요하면 `GET /api/accounts/me`의 `total_equity`를 이어 붙일 것.
+      responses:
+        '200': { $ref: '#/components/responses/AssetHistoryOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ─────────────────────────── portfolio ──────────────────────────
+  /api/portfolios:
+    get:
+      tags: [portfolio]
+      summary: MP 홈 (Active + Draft + Pending + Archived)
+      description: '`drafts`는 **내가 쓴 것만** 보인다. 다른 팀원의 Draft는 노출되지 않는다.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PortfolioHome' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/NoTeam' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [portfolio]
+      summary: 새 MP 작성 (Draft 저장 또는 바로 제출)
+      description: |
+        `status: "PENDING"`으로 바로 제출할 때만 **비중 합계 100% 검증**을 한다
+        (400 `INVALID_ALLOCATION_SUM`). Draft 저장은 미완성 상태도 허용.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePortfolioRequest' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PortfolioIdStatus' }
+        '400':
+          description: 검증 실패 / 비중 합계 ≠ 100% (`INVALID_ALLOCATION_SUM`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/NoTeam' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/portfolios/active:
+    get:
+      tags: [portfolio]
+      summary: Active MP 상세 + 전략 준수도(Alignment)
+      description: |
+        목표 비중 vs 실제 보유 비중을 비교해 0~100점의 준수도를 계산한다.
+
+        ```
+        CurrentWeight_i = (현재가_i × 수량_i) / TotalValue × 100
+        Tolerance_i     = TargetWeight_i × 0.02
+        Diff_i          = max(0, |CurrentWeight_i − TargetWeight_i| − Tolerance_i)
+        Alignment       = clamp(100 × (1 − ΣDiff / 200), 0, 100)
+        ```
+
+        종목별 `status`: 괴리 ≤ 목표×5% `NORMAL` · ~10% `CAUTION` · 초과 `WARNING`.
+        목표에 없는 보유 종목도 Target=0%로 포함된다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ActivePortfolio' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/NoTeam' }
+        '404':
+          description: 운용 중인 모델포트폴리오가 없음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/portfolios/{id}:
+    get:
+      tags: [portfolio]
+      summary: MP 상세 (allocations + votes)
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PortfolioDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/NoTeam' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    put:
+      tags: [portfolio]
+      summary: Draft MP 수정
+      description: |
+        **본인이 작성한 `DRAFT`만** 수정 가능.
+        `allocations`를 보내면 기존 종목 구성을 **전부 교체**한다(부분 수정 아님).
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePortfolioRequest' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PortfolioIdStatus' }
+        '400':
+          description: 검증 실패 / DRAFT가 아닌 MP 수정 시도
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음 / 타인이 작성한 MP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [portfolio]
+      summary: Draft MP 삭제
+      description: '**본인이 작성한 `DRAFT`만** 삭제 가능.'
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      responses:
+        '200':
+          description: 삭제됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: integer, example: 12 }
+        '400':
+          description: DRAFT가 아닌 MP 삭제 시도
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음 / 타인이 작성한 MP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/portfolios/{id}/submit:
+    post:
+      tags: [portfolio]
+      summary: Draft → PENDING 제출
+      description: |
+        제출 조건(미충족 시 400): 제목 · 투자 근거(description) · 종목 1개 이상 · **비중 합계 정확히 100%**.
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      responses:
+        '200':
+          description: 제출됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PortfolioIdStatus' }
+        '400':
+          description: 제출 조건 미충족 (비중 합계는 `INVALID_ALLOCATION_SUM`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음 / 타인이 작성한 MP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/portfolios/{id}/votes:
+    post:
+      tags: [portfolio]
+      summary: MP 투표 (찬성/반대)
+      description: |
+        같은 팀의 `PENDING` MP에만, 1인 1표.
+        **과반수 찬성 → 자동 `APPROVED` + Active MP 등록**(기존 Active는 `ARCHIVED`).
+        **과반수 반대 → 자동 `REJECTED`.**
+        응답의 `status`가 바뀌어 있으면 이 투표로 결론이 난 것이다.
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_approved]
+              properties:
+                is_approved: { type: boolean, example: true }
+      responses:
+        '201':
+          description: 투표 반영됨
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/VoteResult' }
+        '400':
+          description: 검증 실패 / PENDING이 아닌 MP에 투표
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: 소속된 팀이 없음 / 다른 팀의 MP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 이미 투표함
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [portfolio]
+      summary: 투표 현황 (투표자 목록 포함)
+      parameters:
+        - $ref: '#/components/parameters/PortfolioId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/VoteStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/NoTeam' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ──────────────────────────── ranking ───────────────────────────
+  /api/ranking/individual:
+    get:
+      tags: [ranking]
+      summary: 개인 리더보드 (%)
+      description: |
+        점수 = PersonalScore(수익률 %). 동점은 2차 참여율 → 3차 출석일로 재정렬한다.
+
+        **고교/대학 리그는 완전히 분리**되어 있고, 그룹은 서버가 요청 유저의 학교로 자동 판별한다
+        (프론트에 그룹 선택 UI 불필요 — 응답 `school_group` 표시).
+        **학교 미설정 유저는 어느 리그에도 없다** → 빈 목록 + `school_group: null`.
+
+        순위판(Redis ZSET)이 아직 계산되지 않았으면 빈 목록 + `updated_at: null`.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/RankingLimit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/IndividualLeaderboard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/ranking/teams:
+    get:
+      tags: [ranking]
+      summary: 팀 리더보드 (Point)
+      description: |
+        `team_score = R% × 0.9 + Alignment × 0.1` (소수 1자리).
+        Alignment는 **금요일 종가 기준 주간 확정값**이고, Active MP가 없는 팀은 0이다.
+
+        ⚠️ 응답에 `alignment` 필드는 **없다**. 필요하면 `(team_score − r_percent × 0.9) / 0.1`로 역산할 것.
+        동점은 공동 순위(1-2-2-4식).
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/RankingLimit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamLeaderboard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/ranking/schools:
+    get:
+      tags: [ranking]
+      summary: 소속(학교) 리더보드
+      description: |
+        `OrgScore = Σ(구성원점수 × 참여율) / Σ(참여율)` — 단순평균이 아니라 **참여율 가중평균**이다.
+        Σ참여율이 0인 학교는 순위에서 제외된다.
+
+        - `mode=individual` → 구성원=학생, 점수=PersonalScore, `unit: "%"`
+        - `mode=team` → 구성원=팀, 점수=TeamScore, 가중치=팀 참여율(팀원 출석 평균), `unit: "Point"`
+
+        `score`의 단위는 항상 응답의 `unit`을 따를 것. 동점은 공동 순위.
+      parameters:
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [individual, team]
+            default: individual
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/RankingLimit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SchoolLeaderboard' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/ranking/me:
+    get:
+      tags: [ranking]
+      summary: 내 순위 요약 (개인 + 팀 + 소속 2종)
+      description: |
+        **`null`의 의미를 구분할 것:**
+        - 섹션 전체가 `null` → 대상 자체가 없음 (무소속 팀 / 학교 미설정)
+        - 섹션 객체는 있는데 `rank`·`score`가 `null` → 대상은 있으나 아직 순위판에 없음(미계산·신규)
+
+        `team !== null`만 보고 `rank`를 그대로 쓰면 안 된다.
+        `rank_change`는 4개 섹션 전부에 포함된다. `updated_at`은 /me에 없으니 리더보드를 참조할 것.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MyRanking' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/ranking/season:
+    get:
+      tags: [ranking]
+      summary: 현재 시즌 기간 · D-day
+      description: '⚠️ 활성 시즌이 없으면 이 호출이 "자동생성 시즌"을 개시한다 — 시즌 종료 시 다음 시즌을 즉시 명시 생성해 둘 것.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Season' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ──────────────────────────── system ────────────────────────────
+  /api-docs.json:
+    get:
+      tags: [system]
+      summary: 이 OpenAPI 스펙 (JSON)
+      description: |
+        `docs/openapi.yaml`을 JSON으로 변환해 그대로 내려준다.
+        Postman 임포트·클라이언트 코드젠용. 사람이 볼 문서는 `/api-docs`(Swagger UI).
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.0 문서
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/health:
+    get:
+      tags: [system]
+      summary: 헬스체크
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: Server is running
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: '`POST /api/auth/{provider}` 또는 `/api/auth/refresh`가 발급한 accessToken (기본 만료 15분).'
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    RankingLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    HotLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: integer }
+      description: 마지막으로 받은 게시글 id. 생략 시 첫 페이지.
+    OrderStatus:
+      name: status
+      in: query
+      schema: { $ref: '#/components/schemas/OrderStatus' }
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    ShortformId:
+      name: shortformId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    QuizId:
+      name: quizId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    PostIdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    PostIdParam:
+      name: post_id
+      in: path
+      required: true
+      schema: { type: integer }
+    CommentId:
+      name: comment_id
+      in: path
+      required: true
+      schema: { type: integer }
+    UserIdParam:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: integer }
+    PortfolioId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    Symbol:
+      name: symbol
+      in: path
+      required: true
+      description: |
+        미국 주식(`AAPL`, `BRK.B`) 또는 크립토/외환 페어(`BTC/USD`, `EUR/USD`).
+        **페어의 슬래시는 반드시 `%2F`로 URL 인코딩**할 것 (`encodeURIComponent`). 인코딩 없이 보내면 404.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9.]{1,12}(/[A-Za-z0-9.]{1,12})?$'
+      example: AAPL
+
+  responses:
+    BadRequest:
+      description: 요청 형식/값 오류 (Joi 검증 실패 포함 — `message`에 첫 번째 에러 메시지)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            success: false
+            message: 닉네임을 입력해주세요.
+    Unauthorized:
+      description: 인증 실패 (`TOKEN_EXPIRED` → refresh 시도 / `TOKEN_INVALID` → 재로그인)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            success: false
+            message: 토큰이 만료되었습니다.
+            code: TOKEN_EXPIRED
+    Forbidden:
+      description: 인증은 됐으나 권한 없음 (타인 리소스, 선행 조건 미충족)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoTeam:
+      description: 소속된 팀이 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            success: false
+            message: 소속된 팀이 없습니다.
+    NotFound:
+      description: 리소스 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: 서버 내부 오류 (`code` 없음)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            success: false
+            message: 서버 내부 오류가 발생했습니다.
+
+    EmptySuccess:
+      description: '레거시 응답 — `data` 없이 `{ success: true }`만 반환'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Success' }
+
+    LoginOk:
+      description: 기존 유저 로그인
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LoginResult' }
+    LoginCreated:
+      description: 신규 가입 (첫 로그인)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/LoginResult' }
+
+    AccountSummaryOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AccountSummary' }
+    AssetHistoryOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AssetHistory' }
+    OrderPageOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/OrderPage' }
+    PostPageOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PostPage' }
+    StockListOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Stock' }
+    FollowListOk:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Success'
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/FollowUser' }
+
+  schemas:
+    # ── 봉투 ──
+    Success:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, enum: [true], example: true }
+    MessageOnly:
+      type: object
+      description: '`data` 없이 `success`+`message`만 내려가는 레거시 응답.'
+      required: [success, message]
+      properties:
+        success: { type: boolean, enum: [true], example: true }
+        message: { type: string }
+    Error:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, enum: [false], example: false }
+        message:
+          type: string
+          description: 사람이 읽는 한국어 메시지. 프론트가 그대로 노출해도 된다.
+        code:
+          type: string
+          description: |
+            메시지 표시 이상의 분기(리다이렉트·재시도·특정 UI)가 필요한 에러에만 부여된다.
+            전체 목록은 api-conventions.md §5.
+          example: TOKEN_EXPIRED
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 42 }
+
+    # ── 공통 enum ──
+    Position:
+      type: string
+      enum: [TRADER, ANALYST]
+      description: 팀 내 투자 포지션. Trader만 팀 주문을 실행할 수 있다.
+    TeamRole:
+      type: string
+      enum: [LEADER, MEMBER]
+    SchoolGroup:
+      type: string
+      enum: [HIGH_SCHOOL, UNIVERSITY]
+      nullable: true
+      description: '`null`이면 학교 미설정 → 리그 미참여.'
+    OrderType:
+      type: string
+      enum: [BUY, SELL]
+    PriceType:
+      type: string
+      enum: [MARKET, LIMIT]
+    OrderStatus:
+      type: string
+      enum: [PENDING, COMPLETED, CANCELED, FAILED]
+    PostType:
+      type: string
+      enum: [STOCK_DISCUSSION, GENERAL]
+    Opinion:
+      type: string
+      enum: [BUY, NEUTRAL, SELL]
+    PortfolioStatus:
+      type: string
+      enum: [DRAFT, PENDING, APPROVED, REJECTED, ARCHIVED]
+    AlignmentStatus:
+      type: string
+      enum: [NORMAL, CAUTION, WARNING]
+
+    # ── auth ──
+    OAuthCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: 소셜 제공사가 발급한 인가 코드
+          example: 'kQx8...'
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, example: 'a3f1c...' }
+    TokenPair:
+      type: object
+      properties:
+        accessToken: { type: string, description: 'JWT. 페이로드 `{ userId, role }`, 기본 만료 15분.' }
+        refreshToken: { type: string, description: '랜덤 40바이트 hex. 서버에는 해시만 저장된다.' }
+    LoginResult:
+      allOf:
+        - $ref: '#/components/schemas/TokenPair'
+        - type: object
+          properties:
+            user: { $ref: '#/components/schemas/UserBrief' }
+
+    # ── user ──
+    UserBrief:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        email: { type: string, format: email, example: plain.123@gmail.com }
+        nickname: { type: string, example: 인천인 }
+        role: { type: string, example: USER }
+    UserBasic:
+      allOf:
+        - $ref: '#/components/schemas/UserBrief'
+        - type: object
+          properties:
+            school_id: { type: integer, nullable: true, example: 42 }
+            school_is_verified: { type: boolean, example: true }
+            position:
+              allOf: [{ $ref: '#/components/schemas/Position' }]
+              nullable: true
+    MyProfile:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        email: { type: string, format: email, example: plain.123@gmail.com }
+        nickname: { type: string, example: 인천인 }
+        role: { type: string, example: USER }
+        position:
+          allOf: [{ $ref: '#/components/schemas/Position' }]
+          nullable: true
+        provider: { type: string, enum: [kakao, naver, google], example: kakao }
+        school:
+          type: object
+          nullable: true
+          description: 학교 미선택 시 `null`
+          properties:
+            id: { type: integer, example: 42 }
+            name: { type: string, example: 연세대학교 }
+            is_verified: { type: boolean, example: true }
+        team:
+          type: object
+          nullable: true
+          description: 팀 미소속 시 `null`
+          properties:
+            id: { type: integer, example: 5 }
+            name: { type: string, example: Investars }
+            role: { $ref: '#/components/schemas/TeamRole' }
+        streak:
+          type: object
+          properties:
+            consecutive_days: { type: integer, example: 8 }
+            total_learning_days: { type: integer, example: 45 }
+        points: { type: integer, example: 2450 }
+        league_rank:
+          type: integer
+          nullable: true
+          description: 개인 리그 순위. 순위판 미계산·학교 미설정 시 `null`.
+          example: 3
+        asset:
+          type: object
+          nullable: true
+          description: 개인계좌 미생성 시 `null`. 활성 시즌 기준.
+          properties:
+            total_equity: { type: number, example: 107800 }
+            return_rate: { type: number, nullable: true, description: '% 단위', example: 8.42 }
+            return_amount: { type: number, nullable: true, description: '`total_equity − initial_cash`', example: 7800 }
+        created_at: { type: string, format: date-time }
+
+    AttendanceStreak:
+      type: object
+      description: 필드명이 camelCase다.
+      properties:
+        consecutiveDays: { type: integer, example: 8 }
+        totalLearningDays: { type: integer, example: 45 }
+        weeklyChecklist:
+          type: array
+          description: '이번 주 월~일 고정 7칸. 오늘 이후 날짜는 `attended: false`.'
+          items:
+            type: object
+            properties:
+              date: { type: string, example: '2026-08-10' }
+              attended: { type: boolean, example: true }
+    MonthlyAttendance:
+      type: object
+      properties:
+        year: { type: integer, example: 2026 }
+        month: { type: integer, example: 8 }
+        attendanceDates:
+          type: array
+          description: |
+            해당 월의 출석 날짜. DB `DATE` 값이 드라이버를 통해 `Date`로 변환되므로
+            ISO date-time 문자열로 직렬화된다(`YYYY-MM-DD`가 아님).
+          items: { type: string, format: date-time }
+        totalDays: { type: integer, description: 해당 월 출석 일수, example: 12 }
+        consecutiveDays:
+          type: integer
+          description: 조회 월과 무관한 **현재 시점** 누적값
+          example: 8
+        totalLearningDays: { type: integer, example: 45 }
+
+    # ── school ──
+    School:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        school_name: { type: string, example: 연세대학교 }
+        region: { type: string, example: 서울 }
+    SchoolSyncResult:
+      type: object
+      properties:
+        totalFetched: { type: integer, example: 2500 }
+        totalInserted: { type: integer, example: 2500 }
+        totalInDb: { type: integer, example: 2843 }
+        elapsedMs: { type: integer, example: 18342 }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              gubun: { type: string, example: high_list }
+              label: { type: string, example: 고등학교 }
+              fetched: { type: integer, example: 2372 }
+              inserted: { type: integer, example: 2372 }
+
+    # ── team ──
+    Team:
+      type: object
+      description: 팀 상세 (Teams 행 + 멤버 목록)
+      properties:
+        id: { type: integer, example: 5 }
+        school_id: { type: integer, example: 42 }
+        name: { type: string, example: Investars }
+        join_code: { type: string, example: A1B2C3D4 }
+        max_member_count: { type: integer, example: 4 }
+        current_member_count: { type: integer, example: 2 }
+        created_at: { type: string, format: date-time }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/TeamMember' }
+    TeamMember:
+      type: object
+      properties:
+        user_id: { type: integer, example: 1 }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        joined_at: { type: string, format: date-time }
+        nickname: { type: string, example: 김투자 }
+    TeamListItem:
+      type: object
+      properties:
+        id: { type: integer, example: 5 }
+        name: { type: string, example: Investars }
+        current_member_count: { type: integer, example: 2 }
+        max_member_count: { type: integer, example: 4 }
+
+    # ── learning ──
+    LearningHome:
+      type: object
+      description: 필드명이 camelCase다.
+      properties:
+        levelNumber: { type: integer, example: 1 }
+        topics:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 3 }
+              title: { type: string, example: 주식 기본 개념 }
+              levelNumber: { type: integer, example: 1 }
+              sortOrder: { type: integer, example: 0 }
+              shortformProgress:
+                type: object
+                properties:
+                  total: { type: integer, example: 5 }
+                  completed: { type: integer, example: 5 }
+              quizProgress:
+                type: object
+                properties:
+                  total: { type: integer, example: 4 }
+                  correct: { type: integer, example: 3 }
+              isShortformDone: { type: boolean, example: true }
+              isQuizDone: { type: boolean, example: false }
+        todayFlow:
+          type: object
+          description: '오늘 완료한 학습 단계 수. 매일 0으로 자동 초기화. 3단계 중 모의투자(3단계)는 MVP 미구현이라 항상 0으로 집계된다.'
+          properties:
+            completedSteps: { type: integer, example: 2 }
+            totalSteps: { type: integer, example: 3 }
+        level:
+          type: object
+          description: '레벨 기준 — 총 학습일 7/20/50/100일에서 각각 2·3·4·5레벨.'
+          properties:
+            current: { type: integer, example: 2 }
+            totalLearningDays: { type: integer, example: 12 }
+            consecutiveDays: { type: integer, example: 3 }
+    ShortformList:
+      type: object
+      properties:
+        topicId: { type: integer, example: 3 }
+        topicTitle: { type: string, example: 주식 기본 개념 }
+        shortforms:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 11 }
+              title: { type: string, example: 주식이란 무엇인가 }
+              description: { type: string, nullable: true }
+              videoUrl: { type: string, example: 'https://cdn.example.com/sf/11.mp4' }
+              sortOrder: { type: integer, example: 0 }
+              isCompleted: { type: boolean, example: true }
+              isLiked: { type: boolean, example: false }
+              isSaved: { type: boolean, example: false }
+    QuizList:
+      type: object
+      properties:
+        topicId: { type: integer, example: 3 }
+        topicTitle: { type: string, example: 주식 기본 개념 }
+        quizzes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 21 }
+              type: { type: string, enum: [CHOICE, OX, SHORT, MATCH], example: CHOICE }
+              difficulty: { type: string, example: EASY }
+              questionData:
+                type: object
+                description: 문제 본문·선택지 등. 구조는 기획팀 정의를 그대로 노출한다.
+                additionalProperties: true
+              sortOrder: { type: integer, example: 0 }
+    QuizAnswerResult:
+      type: object
+      properties:
+        quizId: { type: integer, example: 21 }
+        isCorrect: { type: boolean, example: true }
+        answerData:
+          type: object
+          description: 정답·해설 등. 구조는 기획팀 정의를 그대로 노출한다.
+          additionalProperties: true
+    QuizSessionResult:
+      type: object
+      properties:
+        topicId: { type: integer, example: 3 }
+        topicTitle: { type: string, example: 주식 기본 개념 }
+        totalQuestions: { type: integer, example: 4 }
+        correctCount: { type: integer, example: 3 }
+        score: { type: integer, description: '0~100 정수', example: 75 }
+        message: { type: string, example: '좋아요! 조금만 더! 💪' }
+
+    # ── community ──
+    CreatePostRequest:
+      type: object
+      required: [post_type, title, content]
+      description: |
+        `post_type = STOCK_DISCUSSION`이면 `stock_code`·`opinion`이 **필수**,
+        `GENERAL`이면 두 필드는 `null`이어야 한다.
+      properties:
+        post_type: { $ref: '#/components/schemas/PostType' }
+        stock_code: { type: string, nullable: true, example: AAPL }
+        opinion:
+          allOf: [{ $ref: '#/components/schemas/Opinion' }]
+          nullable: true
+        title: { type: string, example: 애플 실적 발표 정리 }
+        content: { type: string, example: 이번 분기 매출은... }
+    Post:
+      type: object
+      description: 'CommunityPosts 행 전체.'
+      properties:
+        id: { type: integer, example: 88 }
+        user_id: { type: integer, example: 1 }
+        post_type: { $ref: '#/components/schemas/PostType' }
+        stock_code: { type: string, nullable: true, example: AAPL }
+        opinion:
+          allOf: [{ $ref: '#/components/schemas/Opinion' }]
+          nullable: true
+        title: { type: string, example: 애플 실적 발표 정리 }
+        content: { type: string }
+        view_count: { type: integer, example: 120 }
+        like_count: { type: integer, example: 15 }
+        comment_count: { type: integer, example: 3 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+        deleted_at: { type: string, format: date-time, nullable: true }
+    PostPage:
+      type: object
+      properties:
+        posts:
+          type: array
+          items: { $ref: '#/components/schemas/Post' }
+        hasNext:
+          type: boolean
+          description: '`true`면 마지막 항목의 `id`를 다음 요청의 `cursor`로 넘긴다.'
+          example: true
+    BookmarkedPost:
+      type: object
+      properties:
+        id: { type: integer, example: 88 }
+        title: { type: string, example: KOSPI 전망 }
+        post_type: { $ref: '#/components/schemas/PostType' }
+        stock_code: { type: string, nullable: true, example: AAPL }
+        opinion:
+          allOf: [{ $ref: '#/components/schemas/Opinion' }]
+          nullable: true
+        view_count: { type: integer, example: 120 }
+        like_count: { type: integer, example: 15 }
+        comment_count: { type: integer, example: 3 }
+        created_at: { type: string, format: date-time }
+        author_nickname: { type: string, example: 투자왕 }
+        bookmarked_at: { type: string, format: date-time }
+    Comment:
+      type: object
+      description: 'CommunityComments 행 전체 (작성/수정 응답).'
+      properties:
+        id: { type: integer, example: 301 }
+        post_id: { type: integer, example: 88 }
+        user_id: { type: integer, example: 1 }
+        parent_id: { type: integer, nullable: true }
+        content: { type: string }
+        like_count: { type: integer, example: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+        deleted_at: { type: string, format: date-time, nullable: true }
+    CommentNode:
+      type: object
+      description: |
+        댓글 트리 노드. `is_deleted: true`면 답글이 남아 자리표시로 내려온 삭제 댓글이라
+        `content`·`author_nickname`·`user_id`가 `null`이고 `like_count`는 0이다.
+      properties:
+        id: { type: integer, example: 301 }
+        post_id: { type: integer, example: 88 }
+        user_id: { type: integer, nullable: true, example: 1 }
+        parent_id: { type: integer, nullable: true }
+        content: { type: string, nullable: true }
+        author_nickname: { type: string, nullable: true, example: 투자왕 }
+        like_count: { type: integer, example: 2 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+        is_deleted: { type: boolean, example: false }
+        replies:
+          type: array
+          description: 대댓글 (2단까지)
+          items: { $ref: '#/components/schemas/CommentNode' }
+    HotStock:
+      type: object
+      properties:
+        stock_code: { type: string, example: AAPL }
+        stock_name: { type: string, example: Apple Inc }
+        post_count: { type: integer, example: 12 }
+        total_comments: { type: integer, example: 34 }
+        total_likes: { type: integer, example: 51 }
+        score: { type: integer, description: '`post_count + total_comments + total_likes`', example: 97 }
+    PopularPost:
+      type: object
+      properties:
+        id: { type: integer, example: 88 }
+        user_id: { type: integer, example: 1 }
+        post_type: { $ref: '#/components/schemas/PostType' }
+        stock_code: { type: string, nullable: true, example: AAPL }
+        title: { type: string, example: KOSPI 전망 }
+        view_count: { type: integer, example: 120 }
+        like_count: { type: integer, example: 15 }
+        comment_count: { type: integer, example: 3 }
+        created_at: { type: string, format: date-time }
+        author_nickname: { type: string, example: 투자왕 }
+        score: { type: integer, description: '`like×3 + comment×2 + view`', example: 171 }
+    FollowUser:
+      type: object
+      properties:
+        id: { type: integer, example: 7 }
+        nickname: { type: string, example: 투자왕 }
+        followed_at: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer, example: 501 }
+        type:
+          type: string
+          enum: [FOLLOWEE_POST, POST_LIKE, POST_COMMENT, COMMENT_REPLY, VOTE_START, PORTFOLIO_CHANGED]
+          example: POST_COMMENT
+        reference_id:
+          type: integer
+          nullable: true
+          description: 알림 대상 id (게시글 알림이면 post id, 댓글 알림이면 comment id)
+        content: { type: string, nullable: true }
+        is_read: { type: boolean, example: false }
+        created_at: { type: string, format: date-time }
+        sender_nickname: { type: string, example: 투자왕 }
+
+    # ── stock ──
+    Stock:
+      type: object
+      properties:
+        stock_code: { type: string, example: AAPL }
+        name: { type: string, example: Apple Inc }
+        market: { type: string, example: NASDAQ }
+    WatchlistItem:
+      allOf:
+        - $ref: '#/components/schemas/Stock'
+        - type: object
+          properties:
+            created_at: { type: string, format: date-time, description: 관심종목 등록 시각 }
+            price: { type: number, nullable: true, example: 260.58 }
+            change: { type: number, nullable: true, example: 2.48 }
+            changePercent: { type: number, nullable: true, example: 0.96 }
+    Candle:
+      type: object
+      properties:
+        time:
+          oneOf:
+            - type: string
+              description: '일봉 이상(`3M`/`1Y`/`5Y`/`ALL`) — `"YYYY-MM-DD"`'
+            - type: integer
+              description: '분봉(`1D`/`1W`) — unix 초(UTC)'
+          example: '2026-02-19'
+        open: { type: number, example: 262.6 }
+        high: { type: number, example: 264.48 }
+        low: { type: number, example: 260.05 }
+        close: { type: number, example: 260.58 }
+        volume:
+          type: integer
+          nullable: true
+          description: 외환은 거래량이 없어 `null`
+          example: 30845300
+    Chart:
+      type: object
+      properties:
+        symbol: { type: string, example: AAPL }
+        interval: { type: string, example: 1day }
+        range: { type: string, example: 1Y }
+        currency: { type: string, example: USD }
+        timezone: { type: string, example: America/New_York }
+        exchange: { type: string, example: NASDAQ }
+        candles:
+          type: array
+          items: { $ref: '#/components/schemas/Candle' }
+        high: { type: number, description: 요청 구간 최고가, example: 317.4 }
+        low: { type: number, description: 요청 구간 최저가, example: 245.51 }
+    Quote:
+      type: object
+      properties:
+        symbol: { type: string, example: AAPL }
+        price: { type: number, example: 260.58 }
+        prevClose: { type: number, example: 258.1 }
+        change: { type: number, example: 2.48 }
+        changePercent: { type: number, example: 0.96 }
+        timestamp:
+          oneOf:
+            - type: integer
+              description: '`source = ws` — unix 초(UTC)'
+            - type: string
+              description: '`source = close` — 거래소 로컬 날짜 문자열'
+          example: '2026-07-03'
+        source:
+          type: string
+          enum: [ws, close]
+          description: '`ws` = 장중 실시간 틱, `close` = 마지막 일봉 종가'
+        marketOpen:
+          type: boolean
+          description: 크립토/외환(24/7)은 항상 `true`
+          example: false
+
+    # ── trading ──
+    PlaceOrderRequest:
+      type: object
+      required: [stock_code, order_type, price_type, order_quantity]
+      properties:
+        stock_code:
+          type: string
+          maxLength: 20
+          description: 대문자로 정규화되어 처리된다
+          example: AAPL
+        order_type: { $ref: '#/components/schemas/OrderType' }
+        price_type: { $ref: '#/components/schemas/PriceType' }
+        order_quantity:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          description: 소수 4자리까지
+          example: 10
+        order_price:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          description: |
+            소수 2자리까지. `price_type = LIMIT`일 때 **필수**,
+            `MARKET`일 때는 **보내면 안 된다**(Joi `forbidden` → 400).
+          example: 255.5
+    Order:
+      type: object
+      properties:
+        id: { type: integer, example: 42 }
+        trader_id: { type: integer, example: 1 }
+        stock_code: { type: string, example: AAPL }
+        order_type: { $ref: '#/components/schemas/OrderType' }
+        price_type: { $ref: '#/components/schemas/PriceType' }
+        order_price: { type: string, nullable: true, description: 'DECIMAL 문자열', example: '255.50' }
+        order_quantity: { type: string, description: 'DECIMAL 문자열', example: '10.0000' }
+        executed_price: { type: string, nullable: true, example: '260.58' }
+        executed_quantity: { type: string, nullable: true, example: '10.0000' }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+    OrderPage:
+      type: object
+      properties:
+        orders:
+          type: array
+          description: 최신순 (id 내림차순)
+          items: { $ref: '#/components/schemas/Order' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    PlaceOrderResult:
+      type: object
+      properties:
+        order:
+          type: object
+          description: 접수된 주문. 즉시 체결이면 `status = COMPLETED`, 아니면 `PENDING`.
+          properties:
+            id: { type: integer, example: 42 }
+            account_id: { type: integer, example: 7 }
+            trader_id: { type: integer, example: 1 }
+            stock_code: { type: string, example: AAPL }
+            order_type: { $ref: '#/components/schemas/OrderType' }
+            price_type: { $ref: '#/components/schemas/PriceType' }
+            order_price: { type: number, nullable: true, example: 255.5 }
+            order_quantity: { type: number, example: 10 }
+            status: { $ref: '#/components/schemas/OrderStatus' }
+        account:
+          type: object
+          description: 체결 반영 후 계좌 현금 잔고
+          properties:
+            id: { type: integer, example: 7 }
+            cash_balance: { type: string, description: 'DECIMAL 문자열', example: '97394.20' }
+    ExecutionQueue:
+      type: object
+      description: 'Active MP가 없으면 `portfolio_id`·`title`·`alignment`·`total_diff`가 모두 `null`이고 `items`는 빈 배열.'
+      properties:
+        portfolio_id: { type: integer, nullable: true, example: 5 }
+        title: { type: string, nullable: true, example: IT 대형주 중심 성장 포트폴리오 }
+        alignment: { type: number, nullable: true, example: 89.4 }
+        total_diff: { type: number, nullable: true, example: 21.2 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AlignmentItem' }
+
+    # ── account ──
+    AccountSummary:
+      type: object
+      properties:
+        account:
+          type: object
+          properties:
+            id: { type: integer, example: 7 }
+            account_type: { type: string, enum: [INDIVIDUAL, TEAM], example: INDIVIDUAL }
+            season_id: { type: integer, example: 1 }
+            initial_cash: { type: number, example: 100000 }
+            cash_balance: { type: number, example: 97394.2 }
+            total_equity: { type: number, example: 107800 }
+            return_rate:
+              type: number
+              nullable: true
+              description: '% 단위, 소수 4자리. `initial_cash ≤ 0`이면 `null`.'
+              example: 7.8
+            cash_weight:
+              type: number
+              nullable: true
+              description: '현금 비중 %. `total_equity ≤ 0`이면 `null`.'
+              example: 90.3441
+            has_stale_prices:
+              type: boolean
+              description: '`true`면 시세 조회에 실패해 평단가로 대체한 보유 종목이 있다 → 프론트에 신선도 배지 노출 권장.'
+              example: false
+        holdings:
+          type: array
+          items: { $ref: '#/components/schemas/Holding' }
+    Holding:
+      type: object
+      properties:
+        stock_code: { type: string, example: AAPL }
+        quantity: { type: number, example: 10 }
+        average_buy_price: { type: number, example: 255.5 }
+        current_price:
+          type: number
+          description: '`price_stale: true`면 평단가로 대체된 값.'
+          example: 260.58
+        price_stale: { type: boolean, example: false }
+        value: { type: number, description: '`current_price × quantity`', example: 2605.8 }
+        pnl: { type: number, description: 평가손익, example: 50.8 }
+        pnl_rate: { type: number, nullable: true, description: '% 단위. 매입금액이 0이면 `null`.', example: 1.9883 }
+        weight: { type: number, nullable: true, description: '총자산 대비 비중 %. `total_equity ≤ 0`이면 `null`.', example: 2.4173 }
+        price_source:
+          type: string
+          enum: [ws, close]
+          nullable: true
+          description: '시세 출처. stale 보유는 `null`.'
+        priced_at:
+          type: string
+          nullable: true
+          description: |
+            시세 기준 시점. `price_source = ws`면 ISO date-time,
+            `close`면 거래일 문자열(`YYYY-MM-DD`). stale 보유는 `null`.
+          example: '2026-07-03'
+    AssetHistory:
+      type: object
+      properties:
+        account_id: { type: integer, example: 7 }
+        season_id: { type: integer, example: 1 }
+        items:
+          type: array
+          description: 날짜 오름차순 (그래프 x축 순서)
+          items:
+            type: object
+            properties:
+              date: { type: string, example: '2026-07-19' }
+              total_equity: { type: number, example: 101234.56 }
+              return_rate: { type: number, example: 1.2346 }
+
+    # ── portfolio ──
+    Allocation:
+      type: object
+      properties:
+        stock_code: { type: string, example: AAPL }
+        stock_name: { type: string, example: Apple Inc }
+        target_percentage: { type: number, example: 40 }
+        reason: { type: string, nullable: true, example: AI 인프라 핵심 기업 }
+    AllocationInput:
+      type: object
+      required: [stock_code, target_percentage]
+      properties:
+        stock_code: { type: string, maxLength: 20, example: AAPL }
+        target_percentage: { type: number, minimum: 0, maximum: 100, example: 40 }
+        reason: { type: string, maxLength: 2000, nullable: true }
+    AlignmentItem:
+      type: object
+      properties:
+        stock_code: { type: string, example: AAPL }
+        target_weight: { type: number, description: '목표 비중 %', example: 40 }
+        current_weight: { type: number, description: '현재 실제 비중 %', example: 35.8 }
+        diff: { type: number, description: '`current − target` (양수=초과, 음수=부족)', example: -4.2 }
+        raw_diff: { type: number, description: 절대 괴리, example: 4.2 }
+        status: { $ref: '#/components/schemas/AlignmentStatus' }
+    PortfolioSummary:
+      type: object
+      properties:
+        id: { type: integer, example: 8 }
+        title: { type: string, nullable: true, example: 미래 성장 산업 분산 포트폴리오 }
+        status: { $ref: '#/components/schemas/PortfolioStatus' }
+        proposer_nickname: { type: string, example: 최애널 }
+        created_at: { type: string, format: date-time }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/Allocation' }
+    PortfolioHome:
+      type: object
+      properties:
+        active:
+          type: object
+          nullable: true
+          description: 운용 중인 Active MP. 없으면 `null`.
+          properties:
+            team_id: { type: integer, example: 1 }
+            portfolio_id: { type: integer, example: 5 }
+            title: { type: string, example: IT 대형주 중심 성장 포트폴리오 }
+            proposer_nickname: { type: string, example: 김투자 }
+            activated_at: { type: string, format: date-time }
+            allocations:
+              type: array
+              items: { $ref: '#/components/schemas/Allocation' }
+        drafts:
+          type: array
+          description: '**내가 작성한** Draft만'
+          items: { $ref: '#/components/schemas/PortfolioSummary' }
+        pending:
+          type: array
+          description: 팀 전체가 투표 중인 MP
+          items: { $ref: '#/components/schemas/PortfolioSummary' }
+        archived:
+          type: array
+          description: 과거에 운용했던 MP 이력
+          items: { $ref: '#/components/schemas/PortfolioSummary' }
+    ActivePortfolio:
+      type: object
+      properties:
+        team_id: { type: integer, example: 1 }
+        portfolio_id: { type: integer, example: 5 }
+        title: { type: string, example: IT 대형주 중심 성장 포트폴리오 }
+        description: { type: string, nullable: true }
+        analysis: { type: string, nullable: true }
+        proposer_nickname: { type: string, example: 김투자 }
+        activated_at: { type: string, format: date-time }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/Allocation' }
+        alignment: { type: number, description: '전략 준수도 0~100 (높을수록 목표에 근접)', example: 89.4 }
+        total_diff: { type: number, description: '총 괴리도 (낮을수록 좋음)', example: 21.2 }
+        alignment_items:
+          type: array
+          items: { $ref: '#/components/schemas/AlignmentItem' }
+        account:
+          type: object
+          description: 팀 계좌 요약
+          properties:
+            cash_balance: { type: number, example: 500000 }
+            total_equity: { type: number, example: 9800000 }
+            return_rate: { type: number, nullable: true, example: -2 }
+    PortfolioDetail:
+      type: object
+      properties:
+        id: { type: integer, example: 12 }
+        team_id: { type: integer, example: 1 }
+        type: { type: string, enum: [NEW, REVISION], example: NEW }
+        parent_id: { type: integer, nullable: true }
+        proposed_by: { type: integer, example: 3 }
+        title: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        analysis: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/PortfolioStatus' }
+        approval_count: { type: integer, example: 2 }
+        rejection_count: { type: integer, example: 0 }
+        created_at: { type: string, format: date-time }
+        allocations:
+          type: array
+          items: { $ref: '#/components/schemas/Allocation' }
+        votes:
+          type: array
+          items: { $ref: '#/components/schemas/Vote' }
+    CreatePortfolioRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [NEW, REVISION]
+          default: NEW
+        parent_id:
+          type: integer
+          nullable: true
+          description: '`REVISION`일 때 원본 MP의 id'
+        title: { type: string, maxLength: 100, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true, description: 투자 근거 }
+        analysis: { type: string, maxLength: 5000, nullable: true, description: 상세 분석 }
+        allocations:
+          type: array
+          default: []
+          items: { $ref: '#/components/schemas/AllocationInput' }
+        status:
+          type: string
+          enum: [DRAFT, PENDING]
+          default: DRAFT
+          description: '`PENDING`이면 바로 투표에 회부 (비중 합계 100% 검증)'
+    UpdatePortfolioRequest:
+      type: object
+      description: 변경할 필드만 보내면 된다.
+      properties:
+        title: { type: string, maxLength: 100, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true }
+        analysis: { type: string, maxLength: 5000, nullable: true }
+        allocations:
+          type: array
+          description: 보내면 기존 종목 구성을 **전부 교체**한다.
+          items: { $ref: '#/components/schemas/AllocationInput' }
+    PortfolioIdStatus:
+      type: object
+      properties:
+        id: { type: integer, example: 12 }
+        status: { $ref: '#/components/schemas/PortfolioStatus' }
+    Vote:
+      type: object
+      properties:
+        voter_id: { type: integer, example: 1 }
+        voter_nickname: { type: string, example: 김팀장 }
+        is_approved: { type: boolean, example: true }
+        created_at: { type: string, format: date-time }
+    VoteResult:
+      type: object
+      properties:
+        portfolio_id: { type: integer, example: 12 }
+        vote: { type: string, enum: [APPROVE, REJECT], example: APPROVE }
+        approval_count: { type: integer, example: 3 }
+        rejection_count: { type: integer, example: 0 }
+        status:
+          allOf: [{ $ref: '#/components/schemas/PortfolioStatus' }]
+          description: 이 투표 반영 후의 MP 상태. `APPROVED`/`REJECTED`면 이 표로 결론이 난 것.
+    VoteStatus:
+      type: object
+      properties:
+        portfolio_id: { type: integer, example: 12 }
+        status: { $ref: '#/components/schemas/PortfolioStatus' }
+        approval_count: { type: integer, example: 2 }
+        rejection_count: { type: integer, example: 0 }
+        votes:
+          type: array
+          items: { $ref: '#/components/schemas/Vote' }
+
+    # ── ranking ──
+    RankChange:
+      type: integer
+      nullable: true
+      description: |
+        직전 거래일 스냅샷 대비 순위 변동 (양수=상승, 음수=하락, `0`=변동 없음).
+        비교할 과거 스냅샷이 없으면(시즌 첫날·신규 진입) `null`. 주말·공휴일은 건너뛴다.
+      example: 2
+    LeaderboardMeta:
+      type: object
+      properties:
+        season_id: { type: integer, example: 1 }
+        school_group: { $ref: '#/components/schemas/SchoolGroup' }
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: '순위판 마지막 갱신 시각. recompute 미실행이면 `null`("N분 전 기준" 표시 재료).'
+        pagination: { $ref: '#/components/schemas/Pagination' }
+    IndividualLeaderboard:
+      allOf:
+        - $ref: '#/components/schemas/LeaderboardMeta'
+        - type: object
+          properties:
+            rankings:
+              type: array
+              items:
+                type: object
+                properties:
+                  rank: { type: integer, example: 1 }
+                  rank_change: { $ref: '#/components/schemas/RankChange' }
+                  user_id: { type: integer, example: 1 }
+                  nickname: { type: string, example: 홍길동 }
+                  school_name: { type: string, nullable: true, example: 테스트고등학교 }
+                  score: { type: number, description: 'PersonalScore(%) 소수 4자리', example: 6.7382 }
+                  active_days: { type: integer, example: 6 }
+                  participation_ratio: { type: number, description: '0~1, 소수 4자리', example: 0.0667 }
+    TeamLeaderboard:
+      allOf:
+        - $ref: '#/components/schemas/LeaderboardMeta'
+        - type: object
+          properties:
+            rankings:
+              type: array
+              items:
+                type: object
+                properties:
+                  rank: { type: integer, example: 1 }
+                  rank_change: { $ref: '#/components/schemas/RankChange' }
+                  team_id: { type: integer, example: 4 }
+                  team_name: { type: string, example: 검증팀A }
+                  school_name: { type: string, nullable: true, example: 테스트고등학교 }
+                  team_score: { type: number, description: 'Point, 소수 1자리', example: 10.6 }
+                  r_percent: { type: number, description: '팀 계좌 수익률 %', example: 0.6738 }
+    SchoolLeaderboard:
+      allOf:
+        - $ref: '#/components/schemas/LeaderboardMeta'
+        - type: object
+          properties:
+            mode: { type: string, enum: [individual, team], example: team }
+            unit:
+              type: string
+              enum: ['%', Point]
+              description: '`score`의 단위. `mode=individual` → `%`, `mode=team` → `Point`.'
+              example: Point
+            rankings:
+              type: array
+              items:
+                type: object
+                properties:
+                  rank: { type: integer, example: 1 }
+                  rank_change: { $ref: '#/components/schemas/RankChange' }
+                  school_id: { type: integer, example: 1 }
+                  school_name: { type: string, example: 테스트고등학교 }
+                  score: { type: number, example: 10.3 }
+    MyRanking:
+      type: object
+      properties:
+        season_id: { type: integer, example: 1 }
+        school_group: { $ref: '#/components/schemas/SchoolGroup' }
+        individual:
+          type: object
+          properties:
+            rank: { type: integer, nullable: true, example: 1 }
+            rank_change: { $ref: '#/components/schemas/RankChange' }
+            score: { type: number, nullable: true, example: 6.7382 }
+            active_days: { type: integer, example: 6 }
+            participation_ratio: { type: number, example: 0.0667 }
+        team:
+          type: object
+          nullable: true
+          description: '팀 미소속이면 `null`. 소속은 있으나 순위판 미등재면 객체는 오되 `rank`·`team_score`·`r_percent`가 `null`.'
+          properties:
+            team_id: { type: integer, example: 4 }
+            team_name: { type: string, example: 검증팀A }
+            rank: { type: integer, nullable: true, example: 1 }
+            rank_change: { $ref: '#/components/schemas/RankChange' }
+            team_score: { type: number, nullable: true, example: 10.6 }
+            r_percent: { type: number, nullable: true, example: 0.6738 }
+            total_teams: { type: integer, example: 3 }
+        school_individual:
+          allOf: [{ $ref: '#/components/schemas/MySchoolRank' }]
+          nullable: true
+        school_team:
+          allOf: [{ $ref: '#/components/schemas/MySchoolRank' }]
+          nullable: true
+        total_participants: { type: integer, example: 42 }
+    MySchoolRank:
+      type: object
+      description: '학교 미설정이면 섹션 전체가 `null`. 학교는 있으나 순위판 미등재면 `rank`·`score`만 `null`.'
+      properties:
+        school_id: { type: integer, example: 1 }
+        school_name: { type: string, example: 테스트고등학교 }
+        rank: { type: integer, nullable: true, example: 1 }
+        rank_change: { $ref: '#/components/schemas/RankChange' }
+        score: { type: number, nullable: true, example: 0.438 }
+        total_schools: { type: integer, example: 2 }
+    Season:
+      type: object
+      properties:
+        season_id: { type: integer, example: 1 }
+        name: { type: string, example: 2026 자동생성 시즌 }
+        start_date: { type: string, example: '2026-07-12' }
+        end_date: { type: string, example: '2026-10-09' }
+        total_days: { type: integer, example: 90 }
+        status: { type: string, example: ACTIVE }
+        d_day: { type: integer, description: 오늘부터 종료일까지 남은 일수, example: 73 }

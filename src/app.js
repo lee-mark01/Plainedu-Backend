@@ -1,5 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const yaml = require('js-yaml');
+const swaggerUi = require('swagger-ui-express');
 const errorHandler = require('./middlewares/errorHandler');
 
 // 도메인 라우터
@@ -42,6 +46,24 @@ app.use('/api/community', communityRouter);
 app.use('/api/schools', schoolRouter);
 app.use('/api/stocks', stockRouter);
 app.use('/api/portfolios', portfolioRouter);
+
+// API 문서 (Swagger UI) — 스펙 원본은 docs/openapi.yaml.
+// 파일이 없어도 서버는 떠야 하므로 문서만 건너뛴다 (Docker 이미지에서 docs/를 뺄 수 있음).
+const OPENAPI_PATH = path.join(__dirname, '../docs/openapi.yaml');
+if (fs.existsSync(OPENAPI_PATH)) {
+  const openapiSpec = yaml.load(fs.readFileSync(OPENAPI_PATH, 'utf8'));
+  app.get('/api-docs.json', (req, res) => res.json(openapiSpec)); // Postman/코드젠 임포트용
+  app.use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openapiSpec, {
+      customSiteTitle: 'Plainedu API Docs',
+      swaggerOptions: { persistAuthorization: true, docExpansion: 'none', tagsSorter: 'alpha' },
+    })
+  );
+} else {
+  console.warn('[swagger] docs/openapi.yaml 없음 — /api-docs 비활성화');
+}
 
 // 헬스체크
 app.get('/api/health', (req, res) => {
