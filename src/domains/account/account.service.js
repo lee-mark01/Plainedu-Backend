@@ -29,6 +29,9 @@ const getSeasonById = async (seasonId) => accountRepository.findSeasonById(pool,
 // getOrCreateActiveSeason의 자동 시즌 생성을 피하고 "있을 때만" 도는 데 사용.
 const getActiveSeason = async () => accountRepository.findActiveSeason(pool);
 
+// held 태그 1분 동기화용(docs/market-data-strategy.md §4 held) — 조회 전용.
+const getHeldStockCodes = async (seasonId) => accountRepository.findDistinctHeldStockCodes(pool, seasonId);
+
 // 일일 자산 스냅샷 기록 (마감후 호출) — AccountAssetHistories UPSERT(멱등)
 const ASSET_HISTORY_CHUNK_SIZE = 500;
 const recordDailyAssetHistories = async (rows) => {
@@ -95,6 +98,7 @@ module.exports = {
   getOrCreateActiveSeason,
   getSeasonById,
   getActiveSeason,
+  getHeldStockCodes,
   recordDailyAssetHistories,
   deriveSchoolGroup,
   getOrCreateIndividualAccount,

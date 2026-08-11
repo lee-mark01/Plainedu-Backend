@@ -89,6 +89,19 @@ const findHoldingsBySeason = async (executor, seasonId) => {
   return rows;
 };
 
+// held 태그 동기화용(docs/market-data-strategy.md §4 held) — 시즌 내 보유수량>0인 계좌들의
+// 중복 없는 종목코드 목록. season_id + account_id 경로로 이미 인덱스를 탄다.
+const findDistinctHeldStockCodes = async (executor, seasonId) => {
+  const [rows] = await executor.query(
+    `SELECT DISTINCT h.stock_code
+     FROM AccountHoldings h
+     JOIN VirtualAccounts a ON a.id = h.account_id
+     WHERE a.season_id = ? AND h.quantity > 0`,
+    [seasonId]
+  );
+  return rows.map((r) => r.stock_code);
+};
+
 // rows: [{ id, total_equity, current_return_rate }] — 한 번의 CASE WHEN UPDATE(단일 문 = 원자적).
 // 청크 분할은 호출자(valuation) 책임.
 const bulkUpdateEquity = async (executor, rows) => {
@@ -133,6 +146,7 @@ module.exports = {
   findAccountsBySeason,
   findHoldingsByAccountId,
   findHoldingsBySeason,
+  findDistinctHeldStockCodes,
   bulkUpdateEquity,
   upsertAssetHistories,
 };

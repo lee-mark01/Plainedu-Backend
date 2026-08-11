@@ -21,10 +21,12 @@ const RANGES = Object.keys(RANGE_MAP);
 const INTRADAY_INTERVALS = new Set(['5min', '30min']);
 
 // 장중 TTL(초): 신규 봉 생성 지점의 데이터 구멍 방지 목적 -
+// '1day' 900(15분)은 docs/market-data-strategy.md §6-2 — 구독 종목의 현재가는 WS 틱이 담당하므로
+// 이 TTL은 3M/1Y 차트와 미구독 종목 getQuote에만 영향(미구독 종목 지연이 5분→15분으로 늘어남).
 const OPEN_TTL = {
   '5min': 30,
   '30min': 60,
-  '1day': 300,
+  '1day': 900,
   '1week': 3600,
   '1month': 3600,
 };

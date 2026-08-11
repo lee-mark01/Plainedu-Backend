@@ -1,25 +1,30 @@
 const redis = require('../config/redis');
 const chartService = require('../domains/stock/chart.service');
+const { getEtDateString } = require('../config/marketHours');
 
-// 틱 처리 
+// 틱 처리
 // 1) price:{symbol} 덮어쓰기 — 차트용이 아니라 trading/portfolio 등 타 도메인이 읽는 공용 현재가
 // 2) 전일종가 대비 등락액/등락률 계산 → 게이트웨이가 그대로 브로드캐스트
 
 // 장중 틱이 끊긴 뒤 오래된 가격이 최신처럼 읽히지 않도록 만료시킨다
-const PRICE_TTL_SECONDS = Number(process.env.PRICE_TTL_SECONDS) || 60;
+const PRICE_TTL_SECONDS = Number(process.env.PRICE_TTL_SECONDS) || 180;
 
-// 전일종가는 하루 단위로만 바뀌므로 메모리에 두고 주기 갱신 (1day 캐시 재조회 부담 제거)
-// 실패도 쿨다운으로 기록한다 — 안 그러면 429(한도 초과) 동안 매 틱이 API를 재시도하는 폭풍이 됨
-const PREV_CLOSE_REFRESH_MS = 5 * 60_000;
+// 전일종가는 ET 거래일 동안 절대 안 바뀌므로 "같은 거래일이면 무조건 재사용"으로 심볼당 최대
+// 1회/일 REST로 수렴시킨다 (docs/market-data-strategy.md §6-1 — 경과시간 기준일 때는 심볼당 78회/일이었음).
+// 실패만 예외적으로 경과시간(FAIL_COOLDOWN_MS) 기준 쿨다운을 유지한다 — 안 그러면 429(한도 초과) 동안
+// 매 틱이 API를 재시도하는 폭풍이 됨.
 const FAIL_COOLDOWN_MS = 60_000;
-const prevCloseCache = new Map(); // symbol → { value, fetchedAt, failed }
+const prevCloseCache = new Map(); // symbol → { value, fetchedAt, etDate, failed }
 const inflight = new Map(); // symbol → Promise (동시 틱의 중복 호출 방지)
 
 const getPrevClose = async (symbol) => {
   const hit = prevCloseCache.get(symbol);
   if (hit) {
-    const maxAge = hit.failed ? FAIL_COOLDOWN_MS : PREV_CLOSE_REFRESH_MS;
-    if (Date.now() - hit.fetchedAt < maxAge) return hit.value;
+    if (hit.failed) {
+      if (Date.now() - hit.fetchedAt < FAIL_COOLDOWN_MS) return hit.value;
+    } else if (hit.etDate === getEtDateString()) {
+      return hit.value;
+    }
   }
 
   let pending = inflight.get(symbol);
@@ -27,13 +32,13 @@ const getPrevClose = async (symbol) => {
     pending = chartService
       .getPrevClose(symbol)
       .then((value) => {
-        prevCloseCache.set(symbol, { value, fetchedAt: Date.now(), failed: false });
+        prevCloseCache.set(symbol, { value, fetchedAt: Date.now(), etDate: getEtDateString(), failed: false });
         return value;
       })
       .catch((err) => {
         console.error(`[tickProcessor] ${symbol} 전일종가 조회 실패(${FAIL_COOLDOWN_MS / 1000}초 후 재시도):`, err.message);
         const stale = hit?.value ?? null; // 만료된 값이라도 있으면 사용
-        prevCloseCache.set(symbol, { value: stale, fetchedAt: Date.now(), failed: true });
+        prevCloseCache.set(symbol, { value: stale, fetchedAt: Date.now(), etDate: hit?.etDate ?? getEtDateString(), failed: true });
         return stale;
       })
       .finally(() => inflight.delete(symbol));

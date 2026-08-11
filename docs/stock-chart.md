@@ -101,21 +101,45 @@ const socket = io('http://localhost:3000');
 socket.emit('subscribe', { symbol: 'AAPL' });
 ```
 
+### 이벤트
+
 | 방향 | 이벤트 | 페이로드 | 설명 |
 |---|---|---|---|
-| C→S | `subscribe` | `{ symbol }` | 종목 room 입장 |
-| C→S | `unsubscribe` | `{ symbol }` | room 퇴장 |
+| C→S | `subscribe` | `{ symbol: string }` | 종목 room 입장 요청 |
+| C→S | `unsubscribe` | `{ symbol: string }` | room 퇴장 요청 |
 | S→C | `subscribed` | `{ symbol }` | 구독 성공 ack |
-| S→C | `subscribe-error` | `{ symbol, message }` | 미제공 종목 |
+| S→C | `subscribe-error` | `{ symbol, message }` | 구독 거부 (사유는 아래 표) |
 | S→C | `price` | `{ symbol, price, change, changePercent, timestamp }` | 틱 (장중에만 발생) |
 | S→C | `resync` | `{ symbol }` | 업스트림 재연결 — 차트 REST 재조회 권장 |
 
-- `timestamp`는 unix 초(UTC) — 분봉 차트의 `time`과 같은 기준이라 변환 없이 그대로 사용 가능 (일봉 차트의 마지막 봉을 갱신할 때만 날짜 문자열로 바꿔서 사용)
-- 틱 수신 시: 헤더 숫자 갱신 + `series.update()`로 마지막 봉 갱신
-- 미국 주식은 장마감 시간에 틱이 없다 → 마지막 종가에서 정지가 정상 동작. 크립토/외환(`BTC/USD`, `EUR/USD`)은 24/7 틱 수신
-- 구독 가능 종목 = `REALTIME_SYMBOLS` 목록 (무료 플랜 한도로 6~8종목). Socket.IO의 `subscribe` 페이로드에는 인코딩 없이 `{ symbol: 'BTC/USD' }` 그대로 전달 (URL 인코딩은 REST 경로에만 해당)
+- `subscribe`/`unsubscribe`의 `symbol`은 인코딩 없이 그대로 전달(`{ symbol: 'BTC/USD' }`) — URL 인코딩은 REST 경로에만 해당.
+- `timestamp`는 unix 초(UTC) — 분봉 차트의 `time`과 같은 기준이라 변환 없이 그대로 사용 가능(일봉 차트의 마지막 봉을 갱신할 때만 날짜 문자열로 바꿔서 사용).
+- 틱 수신 시: 헤더 숫자 갱신 + `series.update()`로 마지막 봉 갱신.
+- 미국 주식은 장마감 시간에 틱이 없다 → 마지막 종가에서 정지가 정상 동작. 크립토/외환(`BTC/USD`, `EUR/USD`)은 24/7 틱 수신.
 
-**종목 변경**: `.env`의 `REALTIME_SYMBOLS`만 바꾸면 됨(코드 수정 불필요). 단, 플랜에 따라 일부 심볼은 구독이 거부되므로(스파이크 결과: 크립토 중 BTC/USD만 성공) 서버 기동 후 `[wsUpstream] 구독 성공/실패` 로그로 실제 화이트리스트를 확인할 것.
+### `subscribe-error`의 `message` 사유
+
+| 상황 | message |
+|---|---|
+| 소켓당 구독 한도 초과(기본 5개, `WS_MAX_VIEW_PER_SOCKET`) | `소켓당 최대 N종목까지 구독할 수 있습니다.` |
+| 존재하지 않거나 비활성 종목 / core 목록에 없는 크립토·외환 | `실시간 시세를 제공하지 않는 종목입니다.` |
+| 서버 내부 검증 오류(DB 조회 실패 등, 일시적) | `일시적 오류로 구독할 수 없습니다.` |
+
+같은 심볼로 짧은 시간에 중복 `subscribe`를 보내도 검증은 1회만 일어나고 두 요청 모두 같은 결과를 받는다(서버가 진행 중인 검증을 공유).
+
+### 구독 가능 종목 — 더 이상 고정 목록이 아님 ⚠️
+
+과거엔 `.env`의 `REALTIME_SYMBOLS`(고정 목록)에 있는 종목만 구독 가능했지만, 이제는 **태그 기반 동적 구독**(`docs/market-data-strategy.md` 참고)으로 바뀌었다:
+
+- **주식**: DB(`Stocks` 테이블)에 존재하고 `status = 'ACTIVE'`면 `REALTIME_SYMBOLS` 목록 밖이어도 구독 가능. 즉 프론트는 사실상 "차트 상세페이지를 연 종목이면 아무거나" `subscribe`를 보내면 된다 — 서버가 서버 사이드에서 검증하고 실제 업스트림 구독까지 자동으로 처리한다.
+- **크립토/외환**(심볼에 `/` 포함): DB에 행 자체가 없어서(market ENUM이 NASDAQ/NYSE뿐) `REALTIME_SYMBOLS`(=core) 목록 소속 여부로만 판별한다. 즉 크립토/외환은 여전히 core 목록에 있는 것만 구독 가능.
+- 유저가 실제 보유 중인 종목은 서버가 1분마다 자동으로(랭킹 배치와 함께) 구독을 유지하므로, 프론트가 보유종목에 대해 별도로 `subscribe`를 안 보내도 언젠가는(최대 1분 내) 살아있는 가격을 받게 된다 — 다만 즉시 실시간을 원하면 상세페이지 진입 시 `subscribe`를 보내는 게 맞다(그래야 즉시 반영).
+
+**종목 추가/변경**: core(=`.env`의 `REALTIME_SYMBOLS`, 없으면 코드 상수 `CORE_SYMBOLS`)는 여전히 재배포로만 바뀐다. 다만 이제 core는 "항상 실시간인 최소 보장 목록"일 뿐, 구독 가능 범위 자체를 제한하지 않는다(주식 한정).
+
+### 소켓 종료 시 자동 정리
+
+탭을 닫거나 연결이 끊기면 그 소켓이 구독했던 종목들이 서버에서 자동으로 정리된다(별도 이벤트 불필요). 다만 실제 업스트림(Twelve Data) 구독 해제는 즉시가 아니라 5분 유예 후 일어난다 — 프론트 입장에서 신경 쓸 부분은 아니고, 짧은 시간 안에 재접속/재구독해도 끊김 없이 이어진다는 뜻.
 
 **24/7 마켓 동작 차이**: 심볼에 `/`가 포함되면 24/7 마켓으로 간주 → 캐시 TTL 항상 장중 기준, `quote.marketOpen`은 항상 `true`. 외환은 `volume`이 없어 캔들의 `volume`이 `null`, `currency`는 호가 통화(`currency_quote`)로 채워짐.
 

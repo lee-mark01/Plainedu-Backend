@@ -1,11 +1,34 @@
 const axios = require('axios');
 const AppError = require('../../errors/AppError');
 const { INTRADAY_INTERVALS } = require('../../config/rangeMap');
+const redis = require('../../config/redis');
+const { getEtDateString } = require('../../config/marketHours');
+const { DAILY_CREDIT_BUDGET } = require('../../config/marketDataBudget');
 
 // Twelve Data REST API
 // 문서: https://twelvedata.com/docs#time-series
-// 과금: 심볼 1개 조회 = 1크레딧 (outputsize 무관) · 분당 8크레딧 / 일 800크레딧
+// 과금: 심볼 1개 조회 = 1크레딧 (outputsize 무관). 정확한 분당/일일 한도는
+// src/config/marketDataBudget.js 참고(코드 주석 값과 설계문서 전제 값이 불일치해 설정값으로 뺐음).
 const BASE_URL = 'https://api.twelvedata.com';
+
+const CREDITS_KEY_TTL_SECONDS = 2 * 24 * 60 * 60; // 관측용 — 이틀 후 자동 만료
+
+// 일일 크레딧 사용량 카운터(docs/market-data-strategy.md §7-1④) — 실패해도 요청 자체는 막지 않는다.
+// INCR과 EXPIRE를 파이프라인으로 한 번에 보낸다 — "count===1일 때만 EXPIRE"로 나눠서 두 번
+// await하면, 그 사이에 프로세스가 죽거나 EXPIRE만 실패했을 때 그날 키가 TTL 없이 영원히 남는다.
+// 매번 TTL을 갱신하는 슬라이딩 방식이라 "이틀 후" 기준이 최초 사용이 아니라 마지막 사용 기준으로
+// 바뀌지만, 관측용 카운터라 이 차이는 무해하고 대신 누수 가능성이 사라진다.
+const recordCreditUsage = async () => {
+  try {
+    const key = `credits:${getEtDateString()}`;
+    const [[, count]] = await redis.multi().incr(key).expire(key, CREDITS_KEY_TTL_SECONDS).exec();
+    if (count === DAILY_CREDIT_BUDGET) {
+      console.warn(`[TwelveData] 오늘 예상 크레딧 예산(${DAILY_CREDIT_BUDGET}) 도달`);
+    }
+  } catch (err) {
+    console.error('[TwelveData] 크레딧 카운터 갱신 실패(무시):', err.message);
+  }
+};
 
 // time_series 조회 (라인·캔들 차트 공용 원천)
 // endDate: 과거 구간 lazy 로딩용 — 해당 시각(UTC 문자열) 이전 봉을 조회 
@@ -49,6 +72,8 @@ const fetchTimeSeries = async ({ symbol, interval, outputsize, endDate }) => {
     console.error('[TwelveData] 예상치 못한 응답:', JSON.stringify(data).slice(0, 300));
     throw new AppError('시세 제공사 응답 형식이 올바르지 않습니다.', 502);
   }
+
+  await recordCreditUsage(); // 크레딧이 실제로 소모된 성공 응답만 카운트(429/404/에러 경로는 제외)
 
   return data; // { meta, values }
 };

@@ -77,8 +77,16 @@ const getCachedSeries = async (symbol, interval, outputsize) => {
   return pending;
 };
 
+// 심볼별 조회 수요 — core 재조정 참고용(§3-5). 월 단위 키라 오래된 인기가 영원히 안 남는다
+// (§3-5 원문: "월 단위 키라 오래된 인기가 영원히 남지도 않는다") — 자동 반영 로직은 없음, 조정은 수동.
+const demandZsetKey = () => `marketdata:demand:${new Date().toISOString().slice(0, 7).replace('-', '')}`; // demand:YYYYMM
+
 // GET /api/stocks/:symbol/chart?range=&before=
 const getChart = async (symbol, range, before) => {
+  // 캐시 hit/miss와 무관하게 "사용자가 이 심볼 차트를 봤다"는 신호 자체가 목적 — getQuote(보유종목
+  // 강제 조회)에는 넣지 않는다. 안 그러면 관심과 무관하게 모든 보유종목이 수요 최상위로 오염된다.
+  redis.zincrby(demandZsetKey(), 1, symbol).catch((err) => console.error('[chartService] demand 집계 실패:', err.message));
+
   const { interval, outputsize, slice } = RANGE_MAP[range];
 
   // 과거 드래그 lazy 로딩: 분봉만 별도 구간 조회 (일봉 이상은 표준 수집량이 전체 커버)
