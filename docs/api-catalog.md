@@ -2,8 +2,9 @@
 
 > **이 문서는 "현재 코드에 실제로 존재하는 API"의 단일 목록이다.**
 > 유지 규칙: **API를 추가/변경/삭제한 사람이 같은 PR에서 이 문서의 해당 도메인 표를 갱신한다.** (PR 체크리스트에 포함 권장)
-> 용도: 팀원 간 API 파악 · Postman 컬렉션 시드 · 추후 Swagger(OpenAPI) 작성의 원본.
-> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-08-11
+> 용도: 팀원 간 API 파악 · Postman 컬렉션 시드.
+> **요청/응답 스키마까지 담은 정식 명세는 [openapi.yaml](openapi.yaml)** — 서버 기동 후 `/api-docs`(Swagger UI)에서 바로 시험 호출할 수 있고, `/api-docs.json`은 Postman 임포트용이다. 이 표와 openapi.yaml은 **같은 PR에서 함께** 갱신한다 (`npm run check:openapi`가 경로 누락/유령 경로를 잡는다).
+> 상세 스키마가 따로 있는 도메인은 표에서 스펙 문서를 링크한다. 최종 검증일: 2026-08-11 (로컬 서버 실호출 확인)
 
 ## 공통 규칙
 
@@ -56,7 +57,9 @@
 | POST | `/api/teams` | 🔒 | 팀 생성 (+팀 계좌 자동 생성). body `{ name, position: TRADER\|ANALYST, [max_member_count=4] }` — **학교 인증 필수(미인증 403)**, 이미 팀 있으면 409 |
 | POST | `/api/teams/join` | 🔒 | 팀 가입. body `{ join_code(8자), position }` — 같은 학교 팀만(403), 정원 초과 409, 코드 오류 404 |
 | GET | `/api/teams?keyword=&limit=` | 🔒 | **같은 학교** 팀 목록/검색 (limit 기본 20·최대 50, `page` 없음) |
-| GET | `/api/teams/me` | 🔒 | 내 팀 조회 |
+| GET | `/api/teams/me` | 🔒 | 내 팀 조회. ⚠️ `members[]`에 `role`(LEADER/MEMBER)만 있고 `position`(TRADER/ANALYST)은 없다 (P2 참조) |
+| GET | `/api/teams/me/account` | 🔒 | 팀 계좌 요약+보유 (TH-01/TT-01) — **응답 스키마가 `/api/accounts/me`와 동일**(Scope 토글 시 프론트 컴포넌트 재사용). 팀 미소속 403 |
+| GET | `/api/teams/me/account/history` | 🔒 | 팀 성과 추이 (TH-01) — `/api/accounts/me/history`와 동일 스키마. 팀 미소속 403 |
 
 ## learning — 학습 (`/api/learning`, 전 라우트 🔒)
 
@@ -120,6 +123,7 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | GET | `/api/accounts/me` | 🔒 | 내 계좌 요약(총자산/현금/수익률/현금비중) + 보유종목별 평가손익·비중. 계좌 없으면 자동 생성 후 응답 |
+| GET | `/api/accounts/me/history` | 🔒 | 자산(수익률) 추이 (PI-01) — `data`는 배열이 아니라 **`{ account_id, season_id, items: [{ date: "YYYY-MM-DD", total_equity, return_rate }] }`** 래퍼다(`items`가 오름차순). **기간 파라미터 없음**: 계좌가 시즌 단위(≤90일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 자른다. 오늘 점은 마감 배치(평일 16:05 ET) 전까지 없으므로, 라이브 값이 필요하면 `/accounts/me`의 `total_equity`를 이어 붙인다 |
 
 ## portfolio — 모델포트폴리오 (`/api/portfolios`)
 
@@ -181,12 +185,7 @@
 
 | API | 도메인 | 근거/비고 |
 |---|---|---|
-| 🚨 **학교 설정·인증** = **PM-04 / AUTH-07** ([mypage-api.md §5](mypage-api.md#5-미구현-기능-및-근거)) | user / school | 인증 수단·심사 절차 미확정으로 보류 중인 건인데, **영향 범위가 마이페이지 한 칸이 아니다.** `school_id`·`school_is_verified`를 쓰는 코드 경로가 리포에 하나도 없어(읽기 전용) 팀 생성·가입이 403이고 리그 보드에도 못 오른다(`school_group: null`) → **팀 모드와 리그 전체가 DB 직수정 없이는 동작 불가.** 심사 절차가 길어지면 **설정만 먼저(`school_id`) 열고 `is_verified`는 나중** 분리도 검토 |
-| `GET /api/teams/me/account` — 내 팀 계좌 요약+보유 | **team** | 2026-07-12 확정(포트폴리오 도메인 이후 team 도메인에서 구현) — 계획에 있으므로 P1. **상단 토글로 팀 모드 전환 시 총자산·보유종목을 띄울 API가 없어 팀 모드 홈이 빈다.** 주문 실행/내역은 `/trading/team/*`로 이미 있고 계좌 요약만 빠진 상태. **평가 계산은 반드시 account `getAccountValuation(팀계좌id)` 소비 — 직접 구현 금지** |
-| 메인홈 집계 (기존 API 조합 or 별도 엔드포인트) | 미정 | plan 백로그 — 프론트와 협의 |
-| `GET /api/accounts/me/history` — 자산(수익률) 추이 | account | 기록은 구현 완료 (2026-07-28) — 일일 스냅샷이 AccountAssetHistories에 매일 UPSERT. 남은 건 **조회 API**만. 노출 화면 범위는 기획 확인 중 |
-| `GET /api/ranking/me/history` — 내 순위 추이 | ranking | 위와 같은 케이스(데이터는 쌓이는데 조회구 없음). `DailyRankings`에 매일 4종 스냅샷이 UPSERT되지만 읽기는 `rank_change` 계산용 내부 조회뿐. **화면 요구 확정되면 착수** — 자산 추이와 묶을지 별도로 갈지 포함 |
-
+| 🚨 **학교 설정·인증** = **PM-04 / AUTH-07** ([mypage-api.md §5](mypage-api.md#5-미구현-기능-및-근거)) | user / school | **다른 팀원 담당 — 이 브랜치에서 건드리지 않는다.** 인증 수단·심사 절차 미확정으로 보류. 다만 영향 범위가 마이페이지 한 칸이 아니라는 점은 공유 필요: `school_id`·`school_is_verified`가 읽기 전용이라 팀 생성·가입이 403([team.service.js:15](../src/domains/team/team.service.js#L15))이고 리그 보드에도 못 오른다(`school_group: null`) → **팀 모드 전 화면의 선행 블로커** |
 
 ## P2 — 화면상 필요한데 계획에 없음 (기획 확인 후 배분)
 
@@ -196,7 +195,6 @@
 | `GET /api/teams/:id` — **타인 팀** 상세 | team | 팀 랭킹에서 다른 팀 클릭 시. 내 팀은 `GET /teams/me`가 이미 `members`를 준다 — 포지션 표시만 필요하면 새 API가 아니라 `findMembersByTeamId` SELECT에 `u.position` 추가로 끝 |
 | `POST /api/teams/leave` (또는 DELETE) — 팀 탈퇴 | team | 가입만 있고 탈퇴 없음 |
 | `GET /api/learning/shortforms/saved` | learning | 마이페이지 "저장한 콘텐츠" — 콘텐츠(숏폼) 시딩 후 구현 |
-| 로컬(이메일/비번) 회원가입·로그인 | auth | 기획 필요 여부 확인 — 현재 OAuth 3종만 |
 
 ## P3 — 편의/보강
 
