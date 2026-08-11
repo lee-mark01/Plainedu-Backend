@@ -57,18 +57,42 @@ const deleteComment = async (user_id, comment_id) => {
     if (comment.user_id !== user_id) {
         throw new AppError('Forbidden', 403);
     }
-    await commentRepository.softDelete(comment_id);
+    await commentRepository.softDelete(comment_id, comment.post_id);
 };
 
-// 댓글 목록 조회 (댓글 + 대댓글 트리 구조)
-const getCommentsByPostId = async (post_id) => {
-    const post = await postRepository.findById(post_id);
-    if (!post) {
-        throw new AppError('Post not found', 404);
-    }
-    const comments = await commentRepository.findByPostId(post_id);
+// 삭제된 댓글의 자리표시 — 답글을 살려두기 위해 껍데기만 남긴다
+const toTombstone = (comment) => ({
+    id: comment.id,
+    post_id: comment.post_id,
+    parent_id: comment.parent_id,
+    user_id: null,
+    author_nickname: null,
+    content: null,
+    like_count: 0,
+    created_at: comment.created_at,
+    updated_at: comment.updated_at,
+    is_deleted: true,
+    replies: comment.replies,
+});
 
-    // 트리 구조로 변환: 댓글 → 대댓글
+const toVisible = ({ deleted_at, ...comment }) => ({ ...comment, is_deleted: false });
+
+// 삭제된 댓글은 살아있는 답글이 남아있을 때만 자리표시로 남기고, 아니면 트리에서 제거한다.
+// (자식부터 처리해야 "삭제된 부모 + 전부 삭제된 답글"이 통째로 사라진다)
+const pruneDeleted = (nodes) =>
+    nodes.reduce((kept, comment) => {
+        comment.replies = pruneDeleted(comment.replies);
+
+        if (!comment.deleted_at) {
+            kept.push(toVisible(comment));
+        } else if (comment.replies.length > 0) {
+            kept.push(toTombstone(comment));
+        }
+        return kept;
+    }, []);
+
+// 평면 목록 → 댓글/대댓글 트리. 순수 함수(DB 무관)라 단위 테스트 대상.
+const buildCommentTree = (comments) => {
     const commentMap = new Map();
     const roots = [];
 
@@ -77,16 +101,23 @@ const getCommentsByPostId = async (post_id) => {
         commentMap.set(comment.id, comment);
     }
     for (const comment of comments) {
-        if (comment.parent_id) {
-            const parent = commentMap.get(comment.parent_id);
-            if (parent) {
-                parent.replies.push(comment);
-            }
+        const parent = comment.parent_id ? commentMap.get(comment.parent_id) : null;
+        if (parent) {
+            parent.replies.push(comment);
         } else {
-            roots.push(comment);
+            roots.push(comment); // 부모가 목록에 없으면 고아가 되지 않게 루트로 올린다
         }
     }
-    return roots;
+    return pruneDeleted(roots);
 };
 
-module.exports = { createComment, updateComment, deleteComment, getCommentsByPostId };
+// 댓글 목록 조회 (댓글 + 대댓글 트리 구조)
+const getCommentsByPostId = async (post_id) => {
+    const post = await postRepository.findById(post_id);
+    if (!post) {
+        throw new AppError('Post not found', 404);
+    }
+    return buildCommentTree(await commentRepository.findByPostId(post_id));
+};
+
+module.exports = { createComment, updateComment, deleteComment, getCommentsByPostId, buildCommentTree };

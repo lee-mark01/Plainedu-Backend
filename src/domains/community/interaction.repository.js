@@ -14,9 +14,13 @@ const insertPostLike = async (user_id, post_id) => {
   await pool.query('UPDATE CommunityPosts SET like_count = like_count + 1 WHERE id = ?', [post_id]);
 };
 
+// 실제로 지워진 행이 없으면 카운터를 건드리지 않는다 — 동시 취소 요청 두 개가 모두 -1을 때려
+// like_count가 음수로 내려가는 걸 막는다 (INSERT 쪽은 UNIQUE 제약이 막아준다)
 const deletePostLike = async (user_id, post_id) => {
-  await pool.query('DELETE FROM PostLikes WHERE user_id = ? AND post_id = ?', [user_id, post_id]);
-  await pool.query('UPDATE CommunityPosts SET like_count = like_count - 1 WHERE id = ?', [post_id]);
+  const [result] = await pool.query('DELETE FROM PostLikes WHERE user_id = ? AND post_id = ?', [user_id, post_id]);
+  if (result.affectedRows === 0) return;
+
+  await pool.query('UPDATE CommunityPosts SET like_count = GREATEST(like_count - 1, 0) WHERE id = ?', [post_id]);
 };
 
 // === 댓글 좋아요 ===
@@ -34,8 +38,10 @@ const insertCommentLike = async (user_id, comment_id) => {
 };
 
 const deleteCommentLike = async (user_id, comment_id) => {
-  await pool.query('DELETE FROM CommentLikes WHERE user_id = ? AND comment_id = ?', [user_id, comment_id]);
-  await pool.query('UPDATE CommunityComments SET like_count = like_count - 1 WHERE id = ?', [comment_id]);
+  const [result] = await pool.query('DELETE FROM CommentLikes WHERE user_id = ? AND comment_id = ?', [user_id, comment_id]);
+  if (result.affectedRows === 0) return;
+
+  await pool.query('UPDATE CommunityComments SET like_count = GREATEST(like_count - 1, 0) WHERE id = ?', [comment_id]);
 };
 
 // === 스크랩 ===
