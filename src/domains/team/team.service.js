@@ -77,4 +77,12 @@ const getMyTeam = async (user_id) => {
   return { ...team, members };
 };
 
-module.exports = { createTeam, joinTeam, listTeams, getMyTeam, requireTeamMembership };
+// 내 팀 계좌 해석 (TH-01/TT-01) — 팀 미소속이면 requireTeamMembership이 403.
+// 평가·추이 계산은 전부 account 도메인 소비. 여기서 직접 계산하지 않는다.
+const resolveMyTeamAccount = async (user_id) => {
+  const membership = await requireTeamMembership(user_id);
+  const team = await teamRepository.findById(membership.team_id);
+  return accountService.getOrCreateTeamAccount(team.id, team.school_id);
+};
+
+module.exports = { createTeam, joinTeam, listTeams, getMyTeam, requireTeamMembership, resolveMyTeamAccount };

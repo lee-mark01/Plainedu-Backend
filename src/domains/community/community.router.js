@@ -11,6 +11,7 @@ const authenticate = require('../../middlewares/authenticate');
 const { createPostSchema, getPostsByCursorSchema, updatePostSchema, searchStocksSchema } = require('./post.validator');
 const { createCommentSchema, updateCommentSchema } = require('./comment.validator');
 const { hotListSchema } = require('./hot.validator');
+const { getNotificationsSchema } = require('./notification.validator');
 
 // 게시글 (조회: 공개 / 작성·수정·삭제: 인증 필요)
 router.post('/posts', authenticate, validate(createPostSchema), communityController.createPost);
@@ -45,7 +46,7 @@ router.get('/users/:user_id/followers', followController.getFollowers);
 router.get('/users/:user_id/followings', followController.getFollowings);
 
 // 알림 (인증 필요)
-router.get('/notifications', authenticate, notificationController.getNotifications);
+router.get('/notifications', authenticate, validate(getNotificationsSchema, 'query'), notificationController.getNotifications);
 router.patch('/notifications/:notification_id/read', authenticate, notificationController.markAsRead);
 router.patch('/notifications/read-all', authenticate, notificationController.markAllAsRead);
 

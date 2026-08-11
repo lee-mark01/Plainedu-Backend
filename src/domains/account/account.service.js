@@ -3,6 +3,9 @@ const accountRepository = require('./account.repository');
 const userRepository = require('../user/user.repository');
 const schoolRepository = require('../school/school.repository');
 const tradingConfig = require('../../config/trading');
+// ⚠️ 여기서 ./account.valuation을 require하지 말 것 — config/redis가 로드 시점에 재접속 클라이언트를
+// 열어서, 이 모듈을 import하는 trading/portfolio/team 테스트 프로세스가 전부 종료되지 않는다.
+// 평가가 필요한 응답 조립은 컨트롤러 계층(account.controller.buildAccountSummary)에 둔다.
 
 // 진행 중인 시즌이 없으면 하나 자동 생성 (시즌 운영 화면이 따로 없는 현재 상태의 임시 대응)
 const getOrCreateActiveSeason = async () => {
@@ -94,6 +97,22 @@ const getOrCreateTeamAccount = async (teamId, schoolId) => {
   return accountRepository.findTeamAccount(pool, teamId, season.id);
 };
 
+// 자산(수익률) 추이 — 일일 스냅샷 그대로. 시즌 = 최대 ~90일이라 전 구간을 통째로 내리고
+// 1주/1개월 같은 기간 탭은 프론트가 잘라 쓴다 (기간 파라미터·페이지네이션 없음).
+// 오늘 점은 마감 배치 전까지 없다 — 라이브 값이 필요하면 요약 API의 total_equity를 이어 붙인다.
+const getAssetHistory = async (account) => {
+  const rows = await accountRepository.findAssetHistories(pool, account.id);
+  return {
+    account_id: account.id,
+    season_id: account.season_id,
+    items: rows.map((r) => ({
+      date: r.date,
+      total_equity: Number(r.total_equity),
+      return_rate: Number(r.return_rate),
+    })),
+  };
+};
+
 module.exports = {
   getOrCreateActiveSeason,
   getSeasonById,
@@ -103,4 +122,5 @@ module.exports = {
   deriveSchoolGroup,
   getOrCreateIndividualAccount,
   getOrCreateTeamAccount,
+  getAssetHistory,
 };

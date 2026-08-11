@@ -9,5 +9,7 @@ router.post('/', authenticate, validate(createTeamSchema), teamController.create
 router.post('/join', authenticate, validate(joinTeamSchema), teamController.joinTeam);
 router.get('/', authenticate, validate(listTeamsSchema, 'query'), teamController.listTeams);
 router.get('/me', authenticate, teamController.getMyTeam);
+router.get('/me/account', authenticate, teamController.getMyTeamAccount);
+router.get('/me/account/history', authenticate, teamController.getMyTeamAccountHistory);
 
 module.exports = router;

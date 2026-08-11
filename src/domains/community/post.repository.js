@@ -40,7 +40,8 @@ const findById = async (id) => {
 
 // cursor 기반 페이지네이션
 const findByCursor = async ({ cursor, limit, post_type, stock_code, keyword, search_type, user_id }) => {
-  const conditions = [];
+  // 삭제된 글은 목록에 노출하지 않는다 (findById·hot·스크랩 목록과 동일 정책)
+  const conditions = ['p.deleted_at IS NULL'];
   const params = [];
   let join = '';
 
@@ -70,7 +71,7 @@ const findByCursor = async ({ cursor, limit, post_type, stock_code, keyword, sea
         params.push(`%${keyword}%`);
       } else if (search_type === 'AUTHOR') {
         join = 'JOIN Users u ON p.user_id = u.id';
-        conditions.push('u.name LIKE ?');
+        conditions.push('u.nickname LIKE ?'); // Users에 name 컬럼은 없다
         params.push(`%${keyword}%`);
       }
     }
