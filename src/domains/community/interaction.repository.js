@@ -69,9 +69,27 @@ const insertPostView = async (user_id, post_id) => {
   await pool.query('UPDATE CommunityPosts SET view_count = view_count + 1 WHERE id = ?', [post_id]);
 };
 
+// PM-02: 내 스크랩 목록 조회
+const findBookmarkedPosts = async (user_id) => {
+  const [rows] = await pool.query(
+    `SELECT p.id, p.title, p.post_type, p.stock_code, p.opinion,
+            p.view_count, p.like_count, p.comment_count,
+            p.created_at, u.nickname AS author_nickname,
+            pb.created_at AS bookmarked_at
+     FROM PostBookmarks pb
+     JOIN CommunityPosts p ON p.id = pb.post_id AND p.deleted_at IS NULL
+     JOIN Users u ON u.id = p.user_id
+     WHERE pb.user_id = ?
+     ORDER BY pb.created_at DESC`,
+    [user_id]
+  );
+  return rows;
+};
+
 module.exports = {
   findPostLike, insertPostLike, deletePostLike,
   findCommentLike, insertCommentLike, deleteCommentLike,
   findBookmark, insertBookmark, deleteBookmark,
-  findPostView, insertPostView
+  findPostView, insertPostView,
+  findBookmarkedPosts,
 };

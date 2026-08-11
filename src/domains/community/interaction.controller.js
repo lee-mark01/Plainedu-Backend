@@ -48,4 +48,15 @@ const recordPostView = async (req, res, next) => {
   }
 };
 
-module.exports = { togglePostLike, toggleCommentLike, toggleBookmark, recordPostView };
+// PM-02: 내 스크랩 목록
+const getBookmarkedPosts = async (req, res, next) => {
+  try {
+    const user_id = req.user.userId;
+    const posts = await interactionService.getBookmarkedPosts(user_id);
+    res.status(200).json({ success: true, data: posts });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { togglePostLike, toggleCommentLike, toggleBookmark, recordPostView, getBookmarkedPosts };
