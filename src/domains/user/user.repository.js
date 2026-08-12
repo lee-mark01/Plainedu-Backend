@@ -51,10 +51,14 @@ const updatePosition = async (id, position, executor = pool) => {
   await executor.query('UPDATE Users SET position = ? WHERE id = ?', [position, id]);
 };
 
+const updateSchoolVerified = async (id, verified) => {
+  await pool.query('UPDATE Users SET school_is_verified = ? WHERE id = ?', [verified, id]);
+};
+
 const deleteUser = async (id) => {
   await pool.query('DELETE FROM Users WHERE id = ?', [id]);
 };
 
 module.exports = {
-  findAll, findById, findProfileById, updateNickname, updatePosition, deleteUser,
+  findAll, findById, findProfileById, updateNickname, updatePosition, updateSchoolVerified, deleteUser,
 };
