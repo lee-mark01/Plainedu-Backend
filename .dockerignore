@@ -6,7 +6,6 @@ node_modules
 .claude_cache*
 tests
 spikes
-docs
 reference
 uploads
 erd.md

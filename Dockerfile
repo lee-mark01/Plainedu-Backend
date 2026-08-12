@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY src/ ./src/
 COPY db/ ./db/
+COPY docs/ ./docs/
 COPY database.json ./
 
 EXPOSE 3000
