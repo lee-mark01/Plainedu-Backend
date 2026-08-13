@@ -12,12 +12,42 @@ const findSeasonById = async (executor, seasonId) => {
   return rows[0] || null;
 };
 
-const createSeason = async (executor, { name, start_date, end_date, total_days }) => {
-  const [result] = await executor.query(
-    "INSERT INTO Seasons (name, start_date, end_date, total_days, status) VALUES (?, ?, ?, ?, 'ACTIVE')",
-    [name, start_date, end_date, total_days]
+// 전 시즌 목록 (최신순) — 지난 시즌 결과 화면의 화살표 내비게이션용.
+// 날짜는 DATE_FORMAT으로 고정한다 (드라이버가 DATE를 Date로 주면 ISO 변환 시 하루 밀림).
+const findAllSeasons = async (executor) => {
+  const [rows] = await executor.query(
+    `SELECT id, name,
+            DATE_FORMAT(start_date, '%Y-%m-%d') AS start_date,
+            DATE_FORMAT(end_date, '%Y-%m-%d') AS end_date,
+            total_days, status
+     FROM Seasons
+     ORDER BY start_date DESC, id DESC`
   );
-  return result.insertId;
+  return rows;
+};
+
+// 종료일이 지난 시즌 닫기. 조건부 UPDATE라 이미 닫힌 시즌에 재실행해도 안전(멱등).
+const completeSeason = async (executor, seasonId) => {
+  const [result] = await executor.query(
+    "UPDATE Seasons SET status = 'COMPLETED' WHERE id = ? AND status = 'ACTIVE'",
+    [seasonId]
+  );
+  return result.affectedRows > 0;
+};
+
+// 시즌 생성. uq_seasons_single_active(생성 컬럼 UNIQUE)가 "ACTIVE 시즌 최대 1개"를 강제하므로,
+// 동시 전환 경합에서 진 요청은 예외 대신 null을 받고 호출부가 이긴 요청의 시즌을 다시 읽는다.
+const createSeason = async (executor, { name, start_date, end_date, total_days }) => {
+  try {
+    const [result] = await executor.query(
+      "INSERT INTO Seasons (name, start_date, end_date, total_days, status) VALUES (?, ?, ?, ?, 'ACTIVE')",
+      [name, start_date, end_date, total_days]
+    );
+    return result.insertId;
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return null; // 다른 요청이 이미 이 분기 시즌을 만들었다
+    throw err;
+  }
 };
 
 const findIndividualAccount = async (executor, userId, seasonId) => {
@@ -48,11 +78,11 @@ const createVirtualAccount = async (
   return result.insertId;
 };
 
+// 갱신 여부는 호출부가 판단한다. 예전엔 SQL에 `AND school_group IS NULL`이 붙어 있었는데,
+// 그러면 학교를 바꿔도(대학→고교) 이미 박힌 그룹을 못 고쳐 리그가 옛 그룹에 남는다.
+// 최초 채우기 경로(getOrCreateIndividualAccount)는 이미 JS에서 NULL을 확인하고 부른다.
 const updateAccountSchoolGroup = async (executor, accountId, schoolGroup) => {
-  await executor.query('UPDATE VirtualAccounts SET school_group = ? WHERE id = ? AND school_group IS NULL', [
-    schoolGroup,
-    accountId,
-  ]);
+  await executor.query('UPDATE VirtualAccounts SET school_group = ? WHERE id = ?', [schoolGroup, accountId]);
 };
 
 // --- valuation 모듈용 조회/갱신 ---
@@ -150,6 +180,8 @@ const findAssetHistories = async (executor, accountId) => {
 module.exports = {
   findActiveSeason,
   findSeasonById,
+  findAllSeasons,
+  completeSeason,
   createSeason,
   findIndividualAccount,
   findTeamAccount,

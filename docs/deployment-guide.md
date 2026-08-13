@@ -159,11 +159,23 @@ docker compose up -d --build
 docker compose exec app npm run migrate
 ```
 
+> 마이그레이션은 **코드 배포와 같은 회차에** 반드시 돌린다. 특히 `20260813000001`(ACTIVE 시즌 유일성)이 빠지면 시즌 전환 순간 동시 요청이 시즌을 여러 개 만들어 계좌·랭킹이 갈라진다.
+
 ### 확인
 
 ```
 http://<EC2_PUBLIC_IP>/api/health
 → {"success":true,"message":"Server is running"}
+
+http://<EC2_PUBLIC_IP>/api-docs
+→ Swagger UI (프론트팀에 전달할 API 문서)
+```
+
+### 초기 데이터 (최초 1회)
+
+```bash
+docker compose exec app npm run seed:stocks   # 미장 전 종목 (TwelveData)
+# 학교: 관리자 계정으로 POST /api/schools/sync (커리어넷 고교+대학)
 ```
 
 ---

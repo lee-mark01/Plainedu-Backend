@@ -1,144 +1,122 @@
-// subscriptions(태그 기반 WS 구독 레지스트리) 단위 테스트 — 의존성 0, DB/Redis 불필요.
-// `node --test tests/`로 실행.
-const { test, mock } = require('node:test');
-const assert = require('node:assert/strict');
+// 태그 레지스트리(core/held/view) 상태 기계 검증.
+// GRACE_MS는 모듈 로드 시점에 env를 읽으므로(subscriptions.js:16) require보다 먼저 줄여야 한다.
+process.env.WS_UNSUBSCRIBE_GRACE_MS = '50';
 
+const test = require('node:test');
+const assert = require('node:assert');
 const subscriptions = require('../src/marketData/subscriptions');
 
-// 배치 flush는 setImmediate로 예약되므로(mock.timers가 setTimeout만 mock하는 경우) 실제 이벤트루프
-// 한 틱을 기다리면 flush가 실행된다.
-const flushMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+const GRACE = subscriptions.GRACE_MS;
+const flushed = () => new Promise(setImmediate); // scheduleFlush의 setImmediate 배치 대기
+const afterGrace = () => new Promise((resolve) => setTimeout(resolve, GRACE + 60));
 
-const setup = () => {
+// 매 테스트마다 레지스트리를 비우고, 업스트림에 나간 지시를 기록한다.
+const setup = (core = []) => {
   subscriptions.reset();
-  const subscribed = [];
-  const unsubscribed = [];
+  const subbed = [];
+  const unsubbed = [];
   subscriptions.init({
-    onSubscribe: (symbols) => subscribed.push(...symbols),
-    onUnsubscribe: (symbols) => unsubscribed.push(...symbols),
+    core,
+    onSubscribe: (symbols) => subbed.push(...symbols),
+    onUnsubscribe: (symbols) => unsubbed.push(...symbols),
   });
-  return { subscribed, unsubscribed };
+  return { subbed, unsubbed };
 };
 
-test('태그 2개 중 1개 제거 → 나머지 태그로 유지 (unsubscribe 없음)', async () => {
-  const { unsubscribed } = setup();
-  subscriptions.add('AAPL', 'held');
-  subscriptions.add('AAPL', 'view:s1');
-  await flushMicrotasks();
+test('init: core 심볼은 한 번의 배치로 구독된다', async () => {
+  const { subbed } = setup(['AAPL', 'BTC/USD']);
+  await flushed();
 
-  subscriptions.remove('AAPL', 'view:s1');
-  await flushMicrotasks();
-
-  assert.equal(subscriptions.hasTag('AAPL', 'held'), true);
-  assert.deepEqual(unsubscribed, []);
+  assert.deepStrictEqual(subbed, ['AAPL', 'BTC/USD']);
+  assert.deepStrictEqual(subscriptions.tagsOf('AAPL'), ['core']);
 });
 
-test('마지막 태그 제거 → 유예 후 해제', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const { unsubscribed } = setup();
-    subscriptions.add('AAPL', 'held');
-    await flushMicrotasks();
+// core가 해제되면 지정가 주문이 통째로 깨진다(trading.service.js:21) — 가장 중요한 불변식.
+test('core: view가 붙었다 떨어져도 해제되지 않는다', async () => {
+  const { unsubbed } = setup(['AAPL']);
+  await flushed();
 
-    subscriptions.remove('AAPL', 'held');
-    await flushMicrotasks();
-    assert.deepEqual(unsubscribed, []); // 아직 유예 중
+  subscriptions.add('AAPL', 'view:socket1');
+  subscriptions.remove('AAPL', 'view:socket1');
+  await afterGrace();
 
-    mock.timers.tick(subscriptions.GRACE_MS);
-    await flushMicrotasks(); // 타이머 콜백이 예약한 flush를 실제로 실행
-
-    assert.deepEqual(unsubscribed, ['AAPL']);
-  } finally {
-    mock.timers.reset();
-  }
+  assert.deepStrictEqual(unsubbed, []);
+  assert.ok(subscriptions.hasTag('AAPL', 'core'));
 });
 
-test('유예 중 재추가 → 해제 취소', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const { unsubscribed } = setup();
-    subscriptions.add('AAPL', 'held');
-    await flushMicrotasks();
+test('태그가 하나라도 남으면 구독을 유지한다', async () => {
+  const { unsubbed } = setup();
+  subscriptions.add('NVDA', 'held');
+  subscriptions.add('NVDA', 'view:socket1');
+  await flushed();
 
-    subscriptions.remove('AAPL', 'held');
-    subscriptions.add('AAPL', 'view:s1'); // 유예 중 재추가
+  subscriptions.remove('NVDA', 'held'); // 매도했지만 아직 상세페이지를 보고 있음
+  await afterGrace();
 
-    mock.timers.tick(subscriptions.GRACE_MS);
-    await flushMicrotasks();
-
-    assert.deepEqual(unsubscribed, []);
-    assert.equal(subscriptions.hasTag('AAPL', 'view:s1'), true);
-  } finally {
-    mock.timers.reset();
-  }
+  assert.deepStrictEqual(unsubbed, []);
+  assert.deepStrictEqual(subscriptions.tagsOf('NVDA'), ['view:socket1']);
 });
 
-test('유예 타이머 발화 후 flush 전에 재추가되면 실제 해제를 보내지 않는다 (동일틱 레이스)', async () => {
-  // remove()의 유예 타이머 콜백은 발화하는 순간 tagsBySymbol을 지우고 pendingUnsubscribe에
-  // 넣은 뒤 flush를 setImmediate로 예약한다. 그 예약된 flush가 실제로 돌기 *전에* 같은 심볼이
-  // add()로 재추가되면, add()는 이미 발화해버린 타이머를 취소할 수 없어(clearTimeout 대상이
-  // 없음) 그냥 새로 태그를 붙인다 — 이때 pendingUnsubscribe에 남아있던 걸 그대로 보내면
-  // "내부 상태는 구독 중인데 실제 업스트림은 해제"라는 불일치가 생긴다.
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const { subscribed, unsubscribed } = setup();
-    subscriptions.add('AAPL', 'held');
-    await flushMicrotasks();
+test('마지막 태그가 빠지면 유예 후에 해제된다', async () => {
+  const { unsubbed } = setup();
+  subscriptions.add('TSLA', 'view:socket1');
+  await flushed();
 
-    subscriptions.remove('AAPL', 'held');
-    mock.timers.tick(subscriptions.GRACE_MS); // 타이머 발화 — pendingUnsubscribe에 들어가고 flush 예약만 된 상태
+  subscriptions.remove('TSLA', 'view:socket1');
+  assert.deepStrictEqual(unsubbed, [], '유예 중에는 아직 해제되면 안 된다');
 
-    subscriptions.add('AAPL', 'view:s1'); // flush가 돌기 전에 재추가 (동일틱 레이스)
-
-    await flushMicrotasks(); // 예약됐던 flush 실행
-
-    assert.deepEqual(unsubscribed, []); // 실제 해제 액션이 나가면 안 됨
-    assert.equal(subscriptions.hasTag('AAPL', 'view:s1'), true); // 내부 상태도 여전히 구독 중
-    assert.ok(subscribed.includes('AAPL')); // 재구독으로 처리돼 onSubscribe도 불림
-  } finally {
-    mock.timers.reset();
-  }
+  await afterGrace();
+  assert.deepStrictEqual(unsubbed, ['TSLA']);
+  assert.strictEqual(subscriptions.hasTag('TSLA', 'view:socket1'), false);
 });
 
-test('setHeld 미호출(DB 실패 시나리오) → held 태그 불변', async () => {
-  setup();
-  subscriptions.add('MSFT', 'held');
-  await flushMicrotasks();
+// 유예(5분) > held 동기화 주기(1분) 부등식이 지키려는 것 — 상세페이지를 닫고 바로 매수했을 때
+// 시세가 끊기면 안 된다.
+test('유예 중 재추가되면 해제가 취소된다 (매수 직후 시세 공백 방지)', async () => {
+  const { unsubbed } = setup();
+  subscriptions.add('GOOGL', 'view:socket1');
+  await flushed();
 
-  const before = subscriptions.tagsOf('MSFT');
-  // DB 실패를 흉내: heldTick의 try/catch가 setHeld를 아예 안 부르는 상황을 그대로 재현 —
-  // 즉 아무것도 호출하지 않았을 때 상태가 그대로인지만 확인한다.
-  assert.deepEqual(subscriptions.tagsOf('MSFT'), before);
+  subscriptions.remove('GOOGL', 'view:socket1'); // 페이지 이탈
+  subscriptions.add('GOOGL', 'held'); // 유예 만료 전에 매수 체결
+  await afterGrace();
+
+  assert.deepStrictEqual(unsubbed, []);
+  assert.ok(subscriptions.hasTag('GOOGL', 'held'));
 });
 
-test('setHeld: 스냅샷에서 빠진 종목은 held 제거, 새로 들어온 종목은 추가', async () => {
-  mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const { subscribed, unsubscribed } = setup();
-    subscriptions.setHeld(['AAPL', 'MSFT']);
-    await flushMicrotasks();
-    assert.deepEqual(subscribed.sort(), ['AAPL', 'MSFT']);
+test('setHeld: 스냅샷에서 빠진 종목만 해제하고 새 종목은 구독한다', async () => {
+  const { subbed, unsubbed } = setup(['AAPL']);
+  await flushed();
 
-    subscriptions.setHeld(['MSFT', 'NVDA']); // AAPL 빠짐, NVDA 추가
-    await flushMicrotasks();
-    assert.equal(subscriptions.hasTag('MSFT', 'held'), true);
-    assert.equal(subscriptions.hasTag('NVDA', 'held'), true);
+  subscriptions.setHeld(['AAPL', 'NVDA']); // AAPL은 core와 중복 보유
+  await flushed();
+  assert.ok(subbed.includes('NVDA'));
 
-    mock.timers.tick(subscriptions.GRACE_MS);
-    await flushMicrotasks();
-    assert.ok(unsubscribed.includes('AAPL'));
-  } finally {
-    mock.timers.reset();
-  }
+  subscriptions.setHeld(['AAPL']); // NVDA 전량 매도
+  await afterGrace();
+
+  assert.deepStrictEqual(unsubbed, ['NVDA']);
+  assert.ok(subscriptions.hasTag('AAPL', 'core'), 'core는 held 스냅샷과 무관하게 유지된다');
 });
 
-test('core 태그는 remove가 호출되지 않는 한 유지된다', async () => {
-  const { subscribed } = setup();
-  subscriptions.init({
-    core: ['AAPL'],
-    onSubscribe: (symbols) => subscribed.push(...symbols),
-    onUnsubscribe: () => {},
-  });
-  await flushMicrotasks();
-  assert.equal(subscriptions.hasTag('AAPL', 'core'), true);
+test('stats: 태그 종류별로 세고 view는 소켓마다 개별 카운트한다', async () => {
+  setup(['AAPL']);
+  subscriptions.add('NVDA', 'held');
+  subscriptions.add('NVDA', 'view:socket1');
+  subscriptions.add('TSLA', 'view:socket2');
+  await flushed();
+
+  assert.deepStrictEqual(subscriptions.stats(), { total: 3, core: 1, held: 1, view: 2 });
+});
+
+test('심볼은 대문자·공백 제거로 정규화된다', async () => {
+  const { unsubbed } = setup();
+  subscriptions.add('  nvda  ', 'held');
+  await flushed();
+  assert.deepStrictEqual(subscriptions.list(), ['NVDA']);
+
+  subscriptions.remove('nvda', 'held'); // 소문자로 지워도 같은 슬롯이어야 한다
+  await afterGrace();
+  assert.deepStrictEqual(unsubbed, ['NVDA']);
 });

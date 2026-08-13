@@ -528,11 +528,13 @@ const getIndividualLeaderboard = async (userId, { page = 1, limit = 20 } = {}) =
 // 팀 보드 자체의 동점 재정렬 기준으로는 쓰지 않는다(기획의 동점 재정렬 규칙은 개인 보드 대상).
 // ZSET은 동점을 연속
 // 배치하므로 페이지 첫 run만 이전 페이지에서 이어질 수 있어 countAbove로 시작 순위를 확정.
-const getTeamLeaderboard = async (userId, { page = 1, limit = 20 } = {}) => {
+const getTeamLeaderboard = async (userId, { page = 1, limit = 20, schoolId = null } = {}) => {
   const season = await accountService.getOrCreateActiveSeason();
   const group = await resolveUserGroup(userId);
-  if (!group) return emptyBoard(season.id, page, limit);
+  if (!group) return emptyBoard(season.id, page, limit, schoolId ? { school_id: schoolId } : {});
   const board = `${group}:team`;
+  // 학교 필터는 순위 계산 방식이 달라 별도 경로 (전량 읽기 후 필터) — 아래 페이지네이션 로직은 무수정
+  if (schoolId) return getTeamLeaderboardBySchool(season, group, board, schoolId, page, limit);
   const offset = (page - 1) * limit;
 
   const [total, rawPage, updatedAt] = await Promise.all([
@@ -576,6 +578,122 @@ const getTeamLeaderboard = async (userId, { page = 1, limit = 20 } = {}) => {
     updated_at: updatedAt ?? null,
     pagination: { page, limit, total },
     rankings,
+  };
+};
+
+// GET /api/ranking/teams?school_id= — 특정 학교의 참여팀만 (소속 리더보드에서 학교를 눌렀을 때).
+// rank는 "학교 내 등수"가 아니라 **리그 전체 순위를 그대로 유지**한다 — 화면의 정보는
+// "우리 학교 A팀이 전체 몇 위인가"이기 때문. pagination.total은 필터 후 팀 수.
+// ZSET을 통째로 읽어 리그 순위를 매긴 뒤 학교로 거른다 (페이지 단위로는 필터 후 순위를 알 수 없음).
+// 전량 읽기 근거는 일일 스냅샷의 getAllEntries와 동일 — ZSET 크기가 시즌 참가팀 규모라 허용.
+const getTeamLeaderboardBySchool = async (season, group, board, schoolId, page, limit) => {
+  const [all, updatedAt] = await Promise.all([
+    rankingCache.getAllEntries(season.id, board),
+    rankingCache.getUpdatedAt(season.id, board),
+  ]);
+
+  const base = {
+    season_id: season.id,
+    school_group: group,
+    school_id: schoolId,
+    updated_at: updatedAt ?? null,
+  };
+  if (!all.length) return { ...base, pagination: { page, limit, total: 0 }, rankings: [] };
+
+  // 리그 전체 기준 공동 순위(1224식) — 전량이라 offset·firstAbove 모두 0
+  const rankByIndex = computeCoRanks(all, splitRuns(all), 0, 0);
+  const schoolByTeam = await rankingRepository.findSchoolIdsByTeamIds(all.map((e) => Number(e.member)));
+
+  const filtered = all
+    .map((e, i) => ({ team_id: Number(e.member), team_score: e.score, rank: rankByIndex[i] }))
+    .filter((r) => schoolByTeam.get(r.team_id) === schoolId);
+
+  const offset = (page - 1) * limit;
+  const pageRows = filtered.slice(offset, offset + limit);
+  if (!pageRows.length) {
+    return { ...base, pagination: { page, limit, total: filtered.length }, rankings: [] };
+  }
+
+  const teamIds = pageRows.map((r) => r.team_id);
+  const [profileMap, prevRanks] = await Promise.all([
+    rankingRepository.findTeamProfiles(teamIds, season.id),
+    rankingRepository.findPrevRanks(season.id, 'TEAM', teamIds, getEtDateString()),
+  ]);
+
+  return {
+    ...base,
+    pagination: { page, limit, total: filtered.length },
+    rankings: pageRows.map((r) => {
+      const profile = profileMap.get(r.team_id);
+      return {
+        rank: r.rank,
+        rank_change: prevRanks.has(r.team_id) ? prevRanks.get(r.team_id) - r.rank : null,
+        team_id: r.team_id,
+        team_name: profile?.team_name ?? null,
+        school_name: profile?.school_name ?? null,
+        team_score: r.team_score,
+        r_percent: profile?.r_percent ?? null,
+      };
+    }),
+  };
+};
+
+// scope → DailyRankings.target_type
+const HISTORY_TARGET_TYPE = {
+  individual: 'USER',
+  team: 'TEAM',
+  school_individual: 'SCHOOL_INDIVIDUAL',
+  school_team: 'SCHOOL_TEAM',
+};
+
+// GET /api/ranking/me/history — 순위 추이 그래프 (지난 시즌 포함).
+// season_id 생략 시 현재 시즌. 대상이 없으면(무학교·무소속팀) 빈 items로 200.
+const getMyRankHistory = async (userId, { seasonId = null, scope = 'individual' } = {}) => {
+  const season = seasonId
+    ? await accountService.getSeasonById(seasonId)
+    : await accountService.getOrCreateActiveSeason();
+  if (!season) throw new AppError('시즌을 찾을 수 없습니다.', 404);
+
+  const schoolByUser = await rankingRepository.findSchoolIdsByUserIds([Number(userId)]);
+  const mySchoolId = schoolByUser.get(Number(userId)) ?? null;
+  const group = mySchoolId == null ? null : await accountService.deriveSchoolGroup(mySchoolId);
+
+  const base = {
+    season_id: season.id,
+    season_name: season.name,
+    scope,
+    school_group: group,
+    target_id: null,
+    items: [],
+  };
+  if (!group) return base; // 학교 미설정 → 어느 보드에도 없음
+
+  let targetId = mySchoolId;
+  if (scope === 'individual') {
+    targetId = Number(userId);
+  } else if (scope === 'team') {
+    const membership = await teamRepository.findMembershipByUserId(userId);
+    targetId = membership?.team_id ?? null;
+  }
+  if (targetId == null) return base; // 팀 미소속
+
+  const rows = await rankingRepository.findRankHistory(
+    season.id,
+    HISTORY_TARGET_TYPE[scope],
+    targetId,
+    group
+  );
+
+  return {
+    ...base,
+    target_id: targetId,
+    items: rows.map((r) => ({
+      date: r.date,
+      rank: r.rank_position,
+      total: Number(r.total),
+      score: Number(r.final_score),
+      return_rate: Number(r.return_rate),
+    })),
   };
 };
 
@@ -774,4 +892,5 @@ module.exports = {
   getTeamLeaderboard,
   getSchoolLeaderboard,
   getMyRankingSummary,
+  getMyRankHistory,
 };

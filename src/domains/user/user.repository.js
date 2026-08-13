@@ -1,10 +1,5 @@
 const pool = require('../../config/db');
 
-const findAll = async () => {
-  const [rows] = await pool.query('SELECT id, email, nickname, role FROM Users');
-  return rows;
-};
-
 const findById = async (id) => {
   const [rows] = await pool.query(
     'SELECT id, email, nickname, role, school_id, school_is_verified, position FROM Users WHERE id = ?',
@@ -51,6 +46,12 @@ const updatePosition = async (id, position, executor = pool) => {
   await executor.query('UPDATE Users SET position = ? WHERE id = ?', [position, id]);
 };
 
+// 학교 변경 = 인증 무효. 새 학교 이메일로 다시 인증해야 하므로 한 문장으로 묶어
+// "학교는 바뀌었는데 인증은 이전 학교 것이 남아있는" 중간 상태를 아예 만들지 않는다.
+const updateSchool = async (id, schoolId, executor = pool) => {
+  await executor.query('UPDATE Users SET school_id = ?, school_is_verified = FALSE WHERE id = ?', [schoolId, id]);
+};
+
 const updateSchoolVerified = async (id, verified) => {
   await pool.query('UPDATE Users SET school_is_verified = ? WHERE id = ?', [verified, id]);
 };
@@ -60,5 +61,5 @@ const deleteUser = async (id) => {
 };
 
 module.exports = {
-  findAll, findById, findProfileById, updateNickname, updatePosition, updateSchoolVerified, deleteUser,
+  findById, findProfileById, updateNickname, updatePosition, updateSchool, updateSchoolVerified, deleteUser,
 };

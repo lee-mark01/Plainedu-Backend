@@ -2,14 +2,18 @@
 
 ## 아키텍처
 
+**접속 주소: `https://api.plainedu.org`** — Cloudflare가 앞단에 붙어 있어 EC2 IP로 직접 붙으면
+https 리다이렉트 + 인증서 불일치로 막힌다. Nginx가 80 → 443 리다이렉트하고 Cloudflare Origin CA
+인증서(`api.plainedu.org`, 2041년 만료)로 TLS를 종단한다.
+
 ```
 Client (Browser / Postman)
     │
-    │  HTTP / WebSocket (port 80)
+    │  HTTPS / WSS  →  api.plainedu.org (Cloudflare)
     ▼
 ┌─────────────────────────────────────────────────┐
 │  EC2 (Ubuntu 24.04, t2.small, 30GB)             │
-│  IP: 3.34.223.29                                │
+│  IP: 3.34.223.29 (직접 접근 불가 — 도메인 사용)   │
 │                                                 │
 │  ┌───────────────────────────────────────────┐   │
 │  │  Nginx (직접 설치)                         │   │
@@ -51,6 +55,7 @@ Client (Browser / Postman)
 | 인스턴스 유형 | t2.small |
 | 스토리지 | 30GB gp3 |
 | 탄력적 IP | 3.34.223.29 |
+| 도메인 | api.plainedu.org (Cloudflare) |
 | 리전 | ap-northeast-2 (서울) |
 
 ### 보안 그룹
@@ -58,7 +63,8 @@ Client (Browser / Postman)
 | 포트 | 소스 | 용도 |
 |------|------|------|
 | 22 (SSH) | 0.0.0.0/0 | SSH 접속, GitHub Actions CD |
-| 80 (HTTP) | 0.0.0.0/0 | API + WebSocket |
+| 80 (HTTP) | 0.0.0.0/0 | → 443 리다이렉트 |
+| 443 (HTTPS) | 0.0.0.0/0 | API + WebSocket (실사용) |
 | 3000 | 0.0.0.0/0 | 직접 접근 (테스트용) |
 
 ---

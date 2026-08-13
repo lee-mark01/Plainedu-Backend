@@ -12,9 +12,12 @@
 //   - 팀 1개(팀장+팀원2, 팀장은 Trader 포지션) + 팀 계좌
 //   - 개인 계좌 (학교인증된 유저 전원)
 //   - MARKET 매수 주문(개인 5건 + 팀 1건)으로 실제 보유종목/평가금액 차이 생성
+//   - 모델포트폴리오 1건: 애널리스트 작성 → 제출 → 팀 과반 찬성 → APPROVED + Active 등록
+//     (보유 종목과 일부러 어긋난 비중이라 준수도 Alignment가 100 미만으로 나온다)
 //   - rankingService.recomputeRankings를 직접 호출해 장 시간과 무관하게 즉시 리그 순위 반영
+//     (팀 점수의 alignment_score가 위 Active MP를 근거로 계산되므로 MP 승인이 반드시 먼저다)
 //
-// 유저/학교/주문은 재실행해도 안전(idempotent)하지만, 주문은 두 번째 실행부턴
+// 유저/학교/주문/MP는 재실행해도 안전(idempotent)하지만, 주문은 두 번째 실행부턴
 // 잔액 부족으로 실패할 수 있음 — 정상 동작이며 스킵하고 계속 진행됨.
 require('dotenv').config();
 
@@ -27,6 +30,7 @@ const teamRepository = require('../../src/domains/team/team.repository');
 const tradingService = require('../../src/domains/trading/trading.service');
 const teamOrderService = require('../../src/domains/trading/teamOrder.service');
 const rankingService = require('../../src/domains/ranking/ranking.service');
+const portfolioService = require('../../src/domains/portfolio/portfolio.service');
 
 const DUMMY_SCHOOLS = [
   { schoolName: '테스트고등학교', region: '테스트' },
@@ -65,6 +69,17 @@ const TEAM_ORDER_PLAN = [{ stock_code: 'NVDA', qty: 10 }];
 const TEAM_NAME = '더미팀';
 const TEAM_MAX_MEMBERS = 5;
 
+// 팀이 실제로 보유한 종목(NVDA)과 일부러 어긋나게 잡는다 —
+const MP_PLAN = {
+  title: '더미 모델포트폴리오',
+  description: 'AI 반도체 비중 유지 + 대형 기술주 신규 편입',
+  analysis: '시딩용 더미 분석 근거',
+  allocations: [
+    { stock_code: 'NVDA', target_percentage: 60, reason: 'AI 수요 지속' },
+    { stock_code: 'AAPL', target_percentage: 40, reason: '방어적 편입' },
+  ],
+};
+
 const upsertSchool = async ({ schoolName, region }) => {
   await pool.query('INSERT IGNORE INTO schools (school_name, region) VALUES (?, ?)', [schoolName, region]);
   const [rows] = await pool.query('SELECT id FROM schools WHERE school_name = ? AND region = ?', [schoolName, region]);
@@ -98,7 +113,7 @@ const runOrSkip = async (label, fn) => {
 
 (async () => {
   try {
-    console.log('[1/6] 필요 종목 존재 확인...');
+    console.log('[1/7] 필요 종목 존재 확인...');
     const [stockRows] = await pool.query('SELECT stock_code FROM Stocks WHERE stock_code IN (?)', [REQUIRED_STOCKS]);
     const existingCodes = new Set(stockRows.map((r) => r.stock_code));
     const missing = REQUIRED_STOCKS.filter((c) => !existingCodes.has(c));
@@ -106,23 +121,23 @@ const runOrSkip = async (label, fn) => {
       throw new Error(`Stocks 테이블에 없는 종목: ${missing.join(', ')} — 먼저 "npm run seed:stocks"를 실행하세요.`);
     }
 
-    console.log('[2/6] 학교 생성...');
+    console.log('[2/7] 학교 생성...');
     const schoolIds = {};
     for (const school of DUMMY_SCHOOLS) {
       schoolIds[school.schoolName] = await upsertSchool(school);
     }
 
-    console.log('[3/6] 유저 생성...');
+    console.log('[3/7] 유저 생성...');
     const userIds = {};
     for (const u of DUMMY_USERS) {
       const school_id = u.school ? schoolIds[u.school] : null;
       userIds[u.email] = await upsertUser(u, school_id);
     }
 
-    console.log('[4/6] 활성 시즌 확보...');
+    console.log('[4/7] 활성 시즌 확보...');
     const season = await accountService.getOrCreateActiveSeason();
 
-    console.log('[5/6] 개인 계좌 + 팀 생성/가입 + 매수 주문...');
+    console.log('[5/7] 개인 계좌 + 팀 생성/가입 + 매수 주문...');
 
     // 학교 인증된 유저 전원 개인 계좌 확보
     for (const u of DUMMY_USERS.filter((u) => u.verified)) {
@@ -176,7 +191,40 @@ const runOrSkip = async (label, fn) => {
       );
     }
 
-    console.log('[6/6] 리그 순위 즉시 재계산 (장 시간 무관)...');
+    // 랭킹 재계산보다 먼저 와야 한다 — 팀 점수의 alignment_score가 Active MP를 근거로 계산된다.
+    console.log('[6/7] 모델포트폴리오 작성 → 제출 → 팀 투표 → 승인...');
+    const analystId = userIds['dummy.member1@test.com'];
+
+    let activeMp = null;
+    try {
+      activeMp = await portfolioService.getActivePortfolio(leaderId);
+    } catch (err) {
+      if (!(err instanceof AppError && err.status === 404)) throw err; // 404 = 아직 Active MP 없음
+    }
+
+    if (activeMp) {
+      console.log(`  - 이미 Active MP 있음 (id=${activeMp.portfolio_id}) — 생성 건너뜀`);
+    } else {
+      const draft = await portfolioService.createPortfolio(analystId, MP_PLAN);
+      console.log(`  ✓ 애널리스트가 MP 작성 (id=${draft.id}, DRAFT)`);
+
+      await portfolioService.submitPortfolio(analystId, draft.id);
+      console.log('  ✓ MP 제출 (PENDING)');
+
+      // 팀원 3명 → 정족수 ceil(3/2)=2. 팀장·팀원2가 찬성하면 가결된다.
+      for (const email of ['dummy.leader@test.com', 'dummy.member2@test.com']) {
+        await runOrSkip(`찬성 투표(${email})`, () => portfolioService.vote(userIds[email], draft.id, true));
+      }
+
+      activeMp = await portfolioService.getActivePortfolio(leaderId);
+      console.log(`  ✓ 가결 → APPROVED + Active 등록 (id=${activeMp.portfolio_id})`);
+    }
+
+    console.log(
+      `  ▸ 준수도(Alignment) ${activeMp.alignment ?? 'N/A'} / 총괴리 ${activeMp.total_diff ?? 'N/A'}`
+    );
+
+    console.log('[7/7] 리그 순위 즉시 재계산 (장 시간 무관)...');
     const result = await rankingService.recomputeRankings(season.id);
     console.log(
       `  ✓ 순위 반영 완료 — 개인 ${result.individual.written}건, 팀 ${result.team.written}건`

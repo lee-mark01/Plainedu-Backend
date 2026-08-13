@@ -181,6 +181,28 @@ const upsertDailyRankings = async (rows, executor = pool) => {
 
 // 순위변동(rank_change)용 — 각 target의 "가장 최근 과거 스냅샷" 순위. beforeDate(보통 오늘 ET) 이전
 // 최신 rank_date 1건씩 (주말·공휴일로 어제 스냅샷이 없어도 그 전 거래일과 비교). 없는 target은 Map 미포함.
+// 순위 시계열 (그래프용) — 일자별 내 순위·점수 + 같은 날 같은 리그의 모수(상위 N% 계산용).
+// 라이브 ZSET이 아니라 DailyRankings를 읽는다.
+// 모수는 같은 (시즌·대상종류·리그그룹)의 그날 행 수 — 순위가 그룹 내에서 매겨지기 때문.
+// school_group은 과거 통합 시절 행이 NULL일 수 있어 <=>(NULL-safe)로 비교한다.
+const findRankHistory = async (seasonId, targetType, targetId, schoolGroup, executor = pool) => {
+  const [rows] = await executor.query(
+    `SELECT DATE_FORMAT(m.rank_date, '%Y-%m-%d') AS date,
+            m.rank_position, m.return_rate, m.final_score, t.total
+     FROM DailyRankings m
+     JOIN (
+       SELECT rank_date, COUNT(*) AS total
+       FROM DailyRankings
+       WHERE season_id = ? AND target_type = ? AND school_group <=> ?
+       GROUP BY rank_date
+     ) t ON t.rank_date = m.rank_date
+     WHERE m.season_id = ? AND m.target_type = ? AND m.target_id = ?
+     ORDER BY m.rank_date`,
+    [seasonId, targetType, schoolGroup ?? null, seasonId, targetType, targetId]
+  );
+  return rows;
+};
+
 const findPrevRanks = async (seasonId, targetType, targetIds, beforeDate, executor = pool) => {
   const map = new Map();
   if (!targetIds.length) return map;
@@ -212,5 +234,6 @@ module.exports = {
   upsertTeamAlignments,
   findTeamAlignments,
   upsertDailyRankings,
+  findRankHistory,
   findPrevRanks,
 };

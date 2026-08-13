@@ -33,10 +33,19 @@ const getMyAccount = async (req, res, next) => {
   }
 };
 
-// GET /api/accounts/me/history — 자산(수익률) 추이 그래프 (PI-01)
+// GET /api/accounts/me/history?season_id= — 자산(수익률) 추이 그래프 (PI-01)
+// season_id 생략 시 현재 시즌(기존 동작). 과거 시즌은 계좌를 **조회만** 한다 —
+// 그 시즌에 계좌가 없으면(미참여) 404가 아니라 빈 items로 응답한다 — 그래프가 비는 게 정상 상태.
 const getMyAccountHistory = async (req, res, next) => {
   try {
-    const account = await accountService.getOrCreateIndividualAccount(req.user.userId);
+    const seasonId = req.validated?.season_id;
+    const account = seasonId
+      ? await accountService.getIndividualAccountForSeason(req.user.userId, seasonId)
+      : await accountService.getOrCreateIndividualAccount(req.user.userId);
+
+    if (!account) {
+      return res.json({ success: true, data: { account_id: null, season_id: seasonId, items: [] } });
+    }
     res.json({ success: true, data: await accountService.getAssetHistory(account) });
   } catch (err) {
     next(err);

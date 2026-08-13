@@ -26,8 +26,10 @@
 | POST | `/api/auth/refresh` | — | body `{ refreshToken }` → access 재발급 |
 | POST | `/api/auth/logout` | — | body `{ refreshToken }` → 무효화 |
 | GET | `/auth/kakao/callback` `/auth/naver/callback` `/auth/google/callback` | — | OAuth 리다이렉트 콜백 (프론트 미경유 테스트용) |
+| POST | `/api/auth/email/send` | 🔒 | 대학교 이메일 인증코드 발송. body `{ email }` → 6자리 코드 메일 발송(Redis TTL 5분). 허용 도메인 외 400 `INVALID_UNIVERSITY_EMAIL` |
+| POST | `/api/auth/email/verify` | 🔒 | 인증코드 확인. body `{ email, code(6자리) }` → `school_is_verified = true`. 만료 400 `CODE_EXPIRED`, 불일치 `CODE_MISMATCH` |
 
-로컬(이메일/비번) 로그인은 미구현 — OAuth 3종만 존재.
+로컬(이메일/비번) 로그인은 미구현 — OAuth 3종만 존재. 위 이메일 인증은 로그인이 아니라 **학교 인증(AUTH-07)** 용이다.
 
 ## user — 유저 (`/api/users`)
 
@@ -35,12 +37,11 @@
 
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
-| GET | `/api/users` | — | 유저 목록 (예시 수준 스텁 — 실사용 API 아님) |
 | POST | `/api/users/attendance/check-in` | 🔒 | 출석 체크인 (앱 접속 시 프론트가 명시적으로 호출) |
 | GET | `/api/users/attendance/streak` | 🔒 | 이번 주(월~일) 출석 + 연속학습일 (칭찬 화면용) |
 | GET | `/api/users/attendance?year=&month=` | 🔒 | 월별 출석 조회 |
 | GET | `/api/users/me` | 🔒 | 마이페이지 프로필 (PM-01) — 닉네임·학교·팀·출석·포인트·리그순위·자산요약 |
-| PATCH | `/api/users/me` | 🔒 | 프로필 편집 (PM-03) — body `{ nickname }` **만**. ⚠️ `school_id`·`position`은 변경 불가 (백로그 P1 참조) |
+| PATCH | `/api/users/me` | 🔒 | 프로필 편집 (PM-03) + 학교 선택 (PM-04) — body `{ nickname?, school_id? }`, 최소 1개. 학교를 바꾸면 `school_is_verified`가 꺼지고(재인증 필요) 계좌 리그 그룹도 재계산된다. 팀 소속 중에는 학교 변경 409. ⚠️ `position`은 여전히 변경 불가 |
 | DELETE | `/api/users/me` | 🔒 | 회원 탈퇴 (AUTH-14) — CASCADE로 관련 데이터 삭제 |
 
 ## school — 학교 (`/api/schools`)
@@ -123,7 +124,7 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | GET | `/api/accounts/me` | 🔒 | 내 계좌 요약(총자산/현금/수익률/현금비중) + 보유종목별 평가손익·비중. 계좌 없으면 자동 생성 후 응답 |
-| GET | `/api/accounts/me/history` | 🔒 | 자산(수익률) 추이 (PI-01) — `data`는 배열이 아니라 **`{ account_id, season_id, items: [{ date: "YYYY-MM-DD", total_equity, return_rate }] }`** 래퍼다(`items`가 오름차순). **기간 파라미터 없음**: 계좌가 시즌 단위(≤90일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 자른다. 오늘 점은 마감 배치(평일 16:05 ET) 전까지 없으므로, 라이브 값이 필요하면 `/accounts/me`의 `total_equity`를 이어 붙인다 |
+| GET | `/api/accounts/me/history?season_id=` | 🔒 | 자산(수익률) 추이 (PI-01) — `data`는 배열이 아니라 **`{ account_id, season_id, items: [{ date: "YYYY-MM-DD", total_equity, return_rate }] }`** 래퍼다(`items`가 오름차순). **기간 파라미터 없음**: 계좌가 시즌 단위(분기 = 90~92일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 자른다. 오늘 점은 마감 배치(평일 16:05 ET) 전까지 없으므로, 라이브 값이 필요하면 `/accounts/me`의 `total_equity`를 이어 붙인다. **`season_id` 지정 시 그 시즌의 추이**(지난 시즌 그래프) — 미참여 시즌이면 `account_id: null` + 빈 items로 200 |
 
 ## portfolio — 모델포트폴리오 (`/api/portfolios`)
 
@@ -148,10 +149,12 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | GET | `/api/ranking/individual?page=&limit=` | 🔒 | 개인 리더보드 — PersonalScore(수익률%), 동점 시 2차 참여율·3차 출석일 재정렬 |
-| GET | `/api/ranking/teams?page=&limit=` | 🔒 | 팀 리더보드 — TeamScore(Point 소수1) = R%×0.9 + Alignment×0.1. Alignment는 **금요일 종가 주간 확정값**(MP 없는 팀은 0). 응답 필드는 `team_score`·`r_percent`뿐 — **`alignment`는 안 내려간다**(필요 시 `(team_score − r_percent×0.9)/0.1`로 역산). 동점은 공동 순위 |
+| GET | `/api/ranking/teams?page=&limit=&school_id=` | 🔒 | 팀 리더보드 — TeamScore(Point 소수1) = R%×0.9 + Alignment×0.1. **`school_id` 지정 시 그 학교의 참여팀만**(소속 보드에서 학교 클릭용) — `rank`는 학교 내 등수가 아니라 **리그 전체 순위** 유지, `total`은 필터 후 팀 수. Alignment는 **금요일 종가 주간 확정값**(MP 없는 팀은 0). 응답 필드는 `team_score`·`r_percent`뿐 — **`alignment`는 안 내려간다**(필요 시 `(team_score − r_percent×0.9)/0.1`로 역산). 동점은 공동 순위 |
 | GET | `/api/ranking/schools?mode=individual\|team&page=&limit=` | 🔒 | 소속(학교) 리더보드 — 학교별 가중평균 org score. `mode=individual`: Σ(개인점수×참여율)/Σ참여율(단위 %) · `mode=team`: 팀점수 평균(단위 Point). 응답에 `unit` 포함, 동점은 공동 순위 |
 | GET | `/api/ranking/me` | 🔒 | 내 순위 요약 — `individual` + `team`(무소속 null) + `school_individual`·`school_team`(학교 미설정 null, 순위판 미등재는 rank null). 4개 섹션 전부 `rank_change` 포함 |
-| GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day |
+| GET | `/api/ranking/me/history?season_id=&scope=` | 🔒 | **순위 추이 그래프** — `DailyRankings`(영구 스냅샷)에서 일자별 `{ date, rank, total, score, return_rate }`. `scope`=`individual\|team\|school_individual\|school_team`, `season_id` 생략 시 현재 시즌. `rank/total`로 상위 N% 산출. 대상 없으면(무학교·팀 미소속) 빈 items로 200 |
+| GET | `/api/ranking/seasons` | 🔒 | **시즌 목록**(최신순) — 지난 시즌 화살표 내비게이션용. `is_current`가 현재 시즌 |
+| GET | `/api/ranking/season` | 🔒 | 현재 시즌 기간/D-day. 시즌 = **분기 단위**(1/4/7/10월 1일 ~ 분기 말일, `"2026년 3분기"`) — 종료일이 지나면 다음 조회 요청에서 자동 전환(전용 스케줄러 없음, 계좌는 시즌별로 새로 발급) |
 
 랭킹 4종 전체 구현 완료 (개인·팀·소속2종). 자동화 구현 완료: 장중 1분 스케줄러 + 평일 16:05 ET 일일 스냅샷(DailyRankings·AccountAssetHistories) + 리더보드·/me `rank_change`. **고교/대학 리그 완전 분리** — 그룹은 서버가 유저 학교로 자동 판별(응답 `school_group`), 학교 미설정 유저는 리그 제외. 팀 참여율=팀원 출석 평균, Alignment=금요일 종가 주간 확정(MP 없으면 0). 상세: ranking-api.md.
 
@@ -185,7 +188,7 @@
 
 | API | 도메인 | 근거/비고 |
 |---|---|---|
-| 🚨 **학교 설정·인증** = **PM-04 / AUTH-07** ([mypage-api.md §5](mypage-api.md#5-미구현-기능-및-근거)) | user / school | **다른 팀원 담당 — 이 브랜치에서 건드리지 않는다.** 인증 수단·심사 절차 미확정으로 보류. 다만 영향 범위가 마이페이지 한 칸이 아니라는 점은 공유 필요: `school_id`·`school_is_verified`가 읽기 전용이라 팀 생성·가입이 403([team.service.js:15](../src/domains/team/team.service.js#L15))이고 리그 보드에도 못 오른다(`school_group: null`) → **팀 모드 전 화면의 선행 블로커** |
+| ~~학교 `school_id` 설정 (PM-04 / AUTH-07의 남은 절반)~~ ✅ | user / school | **구현 완료** — `PATCH /api/users/me`가 `school_id`를 받는다(위 카탈로그 표 참조). 학교 선택 → 이메일 인증 순서이고, 학교를 바꾸면 인증이 무효화된다. 이걸로 팀 생성·가입 403과 빈 리그 보드(`school_group: null`)가 함께 풀렸다. **남은 결정**: 인증 메일 도메인과 선택한 학교를 대조할지 여부(현재 대조 안 함 — 도메인 목록이 학교 매핑 없는 평면 allow-list라 근거가 없음, 기획 확인 필요) |
 
 ## P2 — 화면상 필요한데 계획에 없음 (기획 확인 후 배분)
 

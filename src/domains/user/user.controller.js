@@ -1,14 +1,5 @@
 const userService = require('./user.service');
 
-const getUsers = async (req, res, next) => {
-  try {
-    const users = await userService.getUsers();
-    res.json({ success: true, data: users });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // PM-01: 마이페이지 프로필 조회
 const getMe = async (req, res, next) => {
   try {
@@ -39,4 +30,4 @@ const deleteMe = async (req, res, next) => {
   }
 };
 
-module.exports = { getUsers, getMe, updateMe, deleteMe };
+module.exports = { getMe, updateMe, deleteMe };

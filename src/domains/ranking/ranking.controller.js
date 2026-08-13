@@ -30,11 +30,12 @@ const getIndividualLeaderboard = async (req, res, next) => {
   }
 };
 
-// GET /api/ranking/teams?page=&limit= — TeamScore(Point)·R% 노출, 동점은 공동 순위
+// GET /api/ranking/teams?page=&limit=&school_id= — TeamScore(Point)·R% 노출, 동점은 공동 순위.
+// school_id를 주면 그 학교의 참여팀만 (소속 보드에서 학교 클릭 → 팀 목록). 순위는 리그 전체 기준 유지.
 const getTeamLeaderboard = async (req, res, next) => {
   try {
-    const { page, limit } = req.validated;
-    const data = await rankingService.getTeamLeaderboard(req.user.userId, { page, limit });
+    const { page, limit, school_id: schoolId } = req.validated;
+    const data = await rankingService.getTeamLeaderboard(req.user.userId, { page, limit, schoolId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -57,6 +58,40 @@ const getMyRanking = async (req, res, next) => {
   try {
     const data = await rankingService.getMyRankingSummary(req.user.userId);
     res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/ranking/me/history?season_id=&scope= — 순위 추이 그래프 (지난 시즌 포함)
+const getMyRankHistory = async (req, res, next) => {
+  try {
+    const { season_id: seasonId, scope } = req.validated;
+    const data = await rankingService.getMyRankHistory(req.user.userId, { seasonId, scope });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/ranking/seasons — 시즌 목록 (지난 시즌 화살표 내비게이션용)
+const getSeasons = async (req, res, next) => {
+  try {
+    const seasons = await accountService.getSeasons();
+    res.json({
+      success: true,
+      data: {
+        seasons: seasons.map((s) => ({
+          season_id: s.id,
+          name: s.name,
+          start_date: s.start_date,
+          end_date: s.end_date,
+          total_days: s.total_days,
+          status: s.status,
+          is_current: s.status === 'ACTIVE',
+        })),
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -92,5 +127,7 @@ module.exports = {
   getTeamLeaderboard,
   getSchoolLeaderboard,
   getMyRanking,
+  getMyRankHistory,
+  getSeasons,
   getSeason,
 };

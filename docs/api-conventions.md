@@ -36,6 +36,7 @@
 | 403 | 인증은 됐지만 권한 없음 (타인 리소스, 선행 조건 미충족) |
 | 404 | 리소스 없음 |
 | 409 | 현재 상태와 충돌 (중복 등록, 이미 투표, 취소 불가 주문) |
+| 429 | 요청 한도 초과 (`RATE_LIMITED`) — `Retry-After` 헤더에 재시도까지 남은 초 |
 | 500 | 서버 내부 오류 (code 없음, message는 고정 문구) |
 
 ## 3. 인증
@@ -62,6 +63,15 @@
 | 401 | `REFRESH_TOKEN_EXPIRED` | 리프레시 토큰 만료 → 재로그인 | auth |
 | 401 | `TOKEN_REUSE_DETECTED` | 리프레시 토큰 재사용 감지(탈취 의심) → 세션 전체 무효화됨, 재로그인 | auth |
 | 403 | `EMAIL_REQUIRED` | 카카오 이메일 제공 미동의 → 동의 안내 | auth |
+| 409 | `PROVIDER_CONFLICT` | 같은 이메일이 다른 소셜로 이미 가입 → 해당 제공사로 로그인 유도 | auth |
+| 400 | `INVALID_UNIVERSITY_EMAIL` | 허용 도메인 목록에 없는 이메일 → 학교 이메일 재입력 안내 | auth (이메일 인증) |
+| 400 | `CODE_EXPIRED` | 인증코드 만료(5분)·없음 → 재발송 버튼 노출 | auth (이메일 인증) |
+| 400 | `CODE_MISMATCH` | 인증코드 불일치 → 재입력 | auth (이메일 인증) |
+| 400 | `LIMIT_SYMBOL_NOT_SUPPORTED` | 실시간 미제공 종목에 지정가 주문 → 시장가로 유도 | trading |
+| 400 | `INSUFFICIENT_FUNDS` / `INSUFFICIENT_HOLDINGS` | 현금·보유수량 부족 | trading |
+| 403 | `TRADER_ONLY` | 팀 주문 실행은 Trader 포지션만 | trading (팀) |
+| 400 | `QUIZ_NOT_FINISHED` | 안 푼 문제가 남은 채 세션 완료 시도 | learning |
+| 429 | `RATE_LIMITED` | 요청 한도 초과 → `Retry-After` 헤더(초)만큼 기다렸다 재시도 | 공통 (rateLimit) |
 | 403 | `SHORTFORM_NOT_COMPLETED` | 숏폼 미완료 상태로 퀴즈 접근 → 숏폼 화면으로 유도 | learning |
 | 404 | `TOPIC_NOT_FOUND` | 존재하지 않는 학습 주제 | learning |
 | 404 | `SHORTFORM_NOT_FOUND` | 존재하지 않는 숏폼 | learning |

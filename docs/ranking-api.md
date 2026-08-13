@@ -142,6 +142,8 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 | GET | `/api/ranking/teams?page=&limit=` | 팀 리더보드 (Point) |
 | GET | `/api/ranking/schools?mode=individual\|team&page=&limit=` | 소속(학교) 리더보드. `mode`로 개인/팀 소속 전환 |
 | GET | `/api/ranking/me` | 내 순위 요약 (개인+팀+소속 2종 한 번에) |
+| GET | `/api/ranking/me/history?season_id=&scope=` | 순위 추이 그래프 (지난 시즌 포함) |
+| GET | `/api/ranking/seasons` | 시즌 목록 (지난 시즌 내비게이션) |
 | GET | `/api/ranking/season` | 현재 시즌 기간·D-day |
 
 - 공통 쿼리: `page`(기본 1), `limit`(기본 20, 최대 100). 범위 밖은 400.
@@ -200,6 +202,7 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 }
 ```
 - `team_score`(Point) = `R%×0.9 + Alignment×0.1`. Alignment는 주간(금요일 종가) 확정값, MP 없는 팀은 0 (§3). **`alignment` 필드는 응답에 아직 없다** — 프론트 표시 요구가 확정되면 additive로 추가(non-breaking).
+- **`?school_id=`** 를 붙이면 그 학교의 참여팀만 반환한다(소속 리더보드에서 학교를 눌렀을 때). 이때 `rank`는 **학교 내 등수가 아니라 리그 전체 순위**를 유지하고(화면의 정보는 "우리 학교 A팀이 전체 몇 위인가"), `pagination.total`은 필터 후 팀 수다. 응답 최상위에 `school_id`가 추가된다.
 
 ### GET /schools?mode=individual|team — 소속 리더보드
 
@@ -246,20 +249,59 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 - **팀도 동일 패턴**: 소속 팀은 있으나 순위판 미등재(미계산·skipped 신규 팀)면 `team` 객체는 오되 `rank`/`team_score`/`r_percent`가 `null`. `team !== null`만 보고 `rank`를 쓰지 말 것.
 - **`rank_change`는 4개 섹션 전부 포함** (2026-07-28 추가) — 의미는 리더보드와 동일(§7). 순위판 미등재(`rank: null`)면 `rank_change`도 `null`. `updated_at`은 /me에 없음(리더보드 참조).
 
+### GET /me/history — 순위 추이 (그래프)
+
+지난 시즌 결과 화면의 **순위 선그래프**용. 라이브 ZSET에는 "오늘 값" 하나뿐이라 추이가 없어서, 영구 기록인 `DailyRankings`(평일 16:05 ET 스냅샷)를 읽는다 — **시즌이 끝나도 남는다**.
+
+```json
+{
+  "season_id": 2,
+  "season_name": "2026년 2분기",
+  "scope": "individual",
+  "school_group": "HIGH_SCHOOL",
+  "target_id": 1,
+  "items": [
+    { "date": "2026-04-01", "rank": 1800, "total": 1900, "score": 0.0,  "return_rate": 0.0 },
+    { "date": "2026-06-30", "rank": 3,    "total": 1284, "score": 8.42, "return_rate": 8.42 }
+  ]
+}
+```
+
+- `scope`: `individual` · `team` · `school_individual` · `school_team` (기본 `individual`) → 각각 `DailyRankings.target_type`의 `USER`/`TEAM`/`SCHOOL_INDIVIDUAL`/`SCHOOL_TEAM`.
+- `season_id` 생략 시 현재 시즌. 지난 시즌 id는 `/seasons`에서 얻는다.
+- `total` = 그날 **같은 리그**의 모수 → `rank / total`로 "상위 N%".
+- **수익률 선그래프는 이 API가 아니라 `/api/accounts/me/history?season_id=`** 를 쓴다(자산 스냅샷이 더 촘촘하고 금액도 준다). 둘을 겹치면 디자인의 2선 차트가 된다.
+- 대상이 없으면 빈 `items` + 200: 학교 미설정(`school_group: null`) · `scope=team`인데 팀 미소속(`target_id: null`).
+
+### GET /seasons — 시즌 목록
+
+지난 시즌 화살표 내비게이션용. 최신순.
+
+```json
+{
+  "seasons": [
+    { "season_id": 3, "name": "2026년 3분기", "start_date": "2026-07-01", "end_date": "2026-09-30", "total_days": 92, "status": "ACTIVE", "is_current": true },
+    { "season_id": 2, "name": "2026년 2분기", "start_date": "2026-04-01", "end_date": "2026-06-30", "total_days": 91, "status": "COMPLETED", "is_current": false }
+  ]
+}
+```
+
 ### GET /season — 시즌 정보
 
 ```json
 {
-  "season_id": 1,
-  "name": "2026 자동생성 시즌",
-  "start_date": "2026-07-12",
-  "end_date": "2026-10-09",
-  "total_days": 90,
+  "season_id": 3,
+  "name": "2026년 3분기",
+  "start_date": "2026-07-01",
+  "end_date": "2026-09-30",
+  "total_days": 92,
   "status": "ACTIVE",
-  "d_day": 73
+  "d_day": 48
 }
 ```
 - `d_day` = 오늘부터 종료일까지 남은 일수.
+- 시즌은 **분기 단위**(연 4회)다: 1/4/7/10월 1일 시작 ~ 그 분기 마지막 날 종료. `total_days`는 분기 길이라 90~92로 달라지며, 그대로 참여율(ParticipationRatio)의 분모가 된다.
+- 종료일이 지나면 다음 조회 요청에서 자동으로 다음 분기 시즌으로 전환된다(§8 시즌 전환).
 
 ---
 
@@ -286,7 +328,11 @@ OrgScore_A = (0.6738×0.0667 + 0.3369×0.1556) / (0.0667+0.1556)
 - 스냅샷은 미국 공휴일(휴장일)에도 실행된다(marketHours가 공휴일 미반영) — 그날은 가격 변동 없는 평탄한 스냅샷 1행이 쌓일 뿐 무해. 공휴일 가드는 후속 작업.
 - **배포 전제**: 마이그레이션 `20260728000001`(participation_rate NULLable)이 **코드 배포보다 먼저** 적용돼야 한다. 미적용 상태에서 첫 스냅샷은 TEAM/SCHOOL 행의 NULL insert로 전면 실패한다(그날 기록 0행).
 - **DailyRankings 컬럼 의미는 target_type에 따라 다르다**: `return_rate`는 USER·SCHOOL_INDIVIDUAL=%(수익률), TEAM=R%, SCHOOL_TEAM=**Point(final_score와 동일값)** — NOT NULL 제약상의 타협. 이 테이블을 소비할 때 target_type별 단위 분기 필수.
-- **시즌 전환 주의**: 조회 API는 활성 시즌이 없으면 `getOrCreateActiveSeason`으로 **자동 생성**하지만, 스케줄러/스냅샷은 생성하지 않고 skip한다. 시즌을 종료(status 변경)한 뒤 방치하면 다음 GET 요청 하나가 "자동생성 시즌"을 몰래 개시할 수 있다 — 시즌 종료 시 곧바로 다음 시즌을 명시적으로 생성해 둘 것. (이전 시즌의 Redis ZSET은 TTL 없이 잔존 — 용량상 무해하나 정리 잡 없음)
+- **시즌 전환**: `getOrCreateActiveSeason`이 담당한다 — 종료일이 지난 시즌은 다음 조회 요청에서 `COMPLETED`로 닫히고, **오늘이 속한 분기 시즌**(1/4/7/10월 1일 ~ 분기 말일, 이름 `"2026년 3분기"`)이 열린다. 모든 조회 경로가 이 함수를 지나므로 전용 스케줄러가 없다. 계좌 초기화도 코드가 없다 — 계좌가 `season_id`별이라 새 시즌 첫 접근 때 `initial_cash`로 새로 생성된다. 운영자가 시즌을 앞당겨 끝내려면 `end_date`만 과거로 바꾸면 된다.
+  - **동시성**: 만료 직후 여러 요청이 동시에 전환을 시도해도 시즌은 하나만 생긴다. `Seasons`에 `uq_seasons_single_active`(생성 컬럼 UNIQUE — `status='ACTIVE'`인 행 최대 1개)가 걸려 있어 DB가 강제하고, 경합에서 진 요청은 승자가 만든 시즌을 다시 읽는다. **마이그레이션 `20260813000001` 적용 필수** (미적용 시 트래픽이 몰리는 전환 순간에 ACTIVE 시즌이 갈라져 계좌·랭킹이 쪼개질 수 있다).
+  - 닫기와 생성 사이에서 실패해 ACTIVE가 0개가 되어도 다음 요청이 스스로 복구한다(self-healing) — 트랜잭션 불필요.
+  - 스케줄러/스냅샷은 여전히 시즌을 생성하지 않고 skip한다(`getActiveSeason`). 분기 경계 자정~첫 요청 사이에는 만료된 시즌 기준으로 ZSET이 갱신될 수 있으나, 최종 성적은 `DailyRankings`(종료일 스냅샷)에서 읽으므로 영향 없다.
+  - 이전 시즌의 Redis ZSET은 TTL 없이 잔존 — 용량상 무해하나 정리 잡은 없다.
 - **수동 트리거**: recompute는 `node scripts/recompute-rankings.js`, 스냅샷 재실행(크론 실패한 날 복구)은 `node scripts/run-daily-snapshot.js` — 둘 다 멱등.
 
 

@@ -7,9 +7,6 @@ const validate = require('../../middlewares/validate');
 const { attendanceQuerySchema } = require('./attendance.validator');
 const { updateProfileSchema } = require('./user.validator');
 
-// 예시: GET /api/users
-router.get('/', userController.getUsers);
-
 // ── 마이페이지 (PM-01, PM-03, AUTH-14) ──
 router.get('/me', authenticate, userController.getMe);
 router.patch('/me', authenticate, validate(updateProfileSchema), userController.updateMe);

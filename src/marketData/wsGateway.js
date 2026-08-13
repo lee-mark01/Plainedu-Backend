@@ -1,6 +1,5 @@
 const { Server } = require('socket.io');
-const stockRepository = require('../domains/stock/stock.repository');
-const { isSymbolAlwaysOpen } = require('../config/marketHours');
+const { isValidSymbol } = require('../domains/stock/symbol');
 const { parseEnvInt } = require('../config/env');
 const subscriptions = require('./subscriptions');
 
@@ -12,13 +11,7 @@ const MAX_VIEW_PER_SOCKET = parseEnvInt('WS_MAX_VIEW_PER_SOCKET', 5);
 
 let io = null;
 
-// 크립토/외환(BTC/USD 등)은 Stocks 테이블에 행이 없다(market ENUM이 NASDAQ/NYSE뿐이라 존재 확인이
-// 불가능) → core 목록 소속 여부로만 판별한다. 주식은 stockRepository로 실존 + ACTIVE 여부 확인.
-const isValidSymbol = async (symbol) => {
-  if (isSymbolAlwaysOpen(symbol)) return subscriptions.hasTag(symbol, 'core');
-  const stock = await stockRepository.findByCode(symbol);
-  return !!stock && stock.status === 'ACTIVE';
-};
+// 심볼 검증은 REST 차트와 공유한다 — domains/stock/symbol.js 참고.
 
 const init = (httpServer) => {
   io = new Server(httpServer, {

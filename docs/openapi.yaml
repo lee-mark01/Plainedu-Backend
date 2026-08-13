@@ -42,11 +42,15 @@ info:
   license:
     name: ISC
 
+# 동일 오리진(`/`)이 먼저다 — 배포서버 /api-docs를 열었을 때 "Try it out"이
+# localhost:3000으로 쏴서 실패하는 걸 막는다. 로컬에서 열면 `/`가 곧 localhost:3000이라 그대로 맞다.
 servers:
+  - url: /
+    description: 문서를 열어둔 서버 (배포서버면 배포서버, 로컬이면 localhost:3000)
+  - url: https://api.plainedu.org
+    description: 개발 서버 (EC2 + Cloudflare)
   - url: http://localhost:3000
     description: 로컬 개발 서버
-  - url: /
-    description: 배포 서버 (동일 오리진)
 
 tags:
   - name: auth
@@ -106,6 +110,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/naver:
@@ -135,6 +140,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/google:
@@ -156,6 +162,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/refresh:
@@ -190,6 +197,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/logout:
@@ -206,6 +214,82 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/email/send:
+    post:
+      tags: [auth]
+      summary: 대학교 이메일 인증코드 발송
+      description: |
+        입력한 주소로 **6자리 숫자 인증코드**를 메일 발송한다(Redis 보관, **TTL 5분**).
+        허용 도메인 목록(`src/data/universityEmailDomains`)에 없는 주소면 400 `INVALID_UNIVERSITY_EMAIL`.
+
+        이 인증이 `Users.school_is_verified`를 켜므로 **팀 생성·가입의 선행 조건**이다 (AUTH-07 / PM-04).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: student@yonsei.ac.kr }
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 인증코드가 발송되었습니다.
+        '400':
+          description: 이메일 형식 오류 / 대학교 이메일 아님 (`INVALID_UNIVERSITY_EMAIL`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/email/verify:
+    post:
+      tags: [auth]
+      summary: 대학교 이메일 인증코드 확인
+      description: |
+        코드가 맞으면 요청 유저의 `school_is_verified`를 `true`로 바꾸고 코드를 폐기한다(1회용).
+        발송으로부터 5분이 지나면 400 `CODE_EXPIRED` → 재발송 필요.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email, example: student@yonsei.ac.kr }
+                code:
+                  type: string
+                  pattern: '^\d{6}$'
+                  description: 6자리 숫자
+                  example: '482913'
+      responses:
+        '200':
+          description: '레거시 응답 — `data` 없이 `{ success, message }`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageOnly' }
+              example:
+                success: true
+                message: 이메일 인증이 완료되었습니다.
+        '400':
+          description: |
+            검증 실패 / 코드 만료·없음 (`CODE_EXPIRED`) / 코드 불일치 (`CODE_MISMATCH`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /auth/{provider}/callback:
@@ -237,29 +321,9 @@ paths:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ───────────────────────────── user ─────────────────────────────
-  /api/users:
-    get:
-      tags: [user]
-      summary: '[스텁] 유저 목록'
-      description: 예시 수준의 스텁이다. 실서비스 화면에서 쓰지 않는다.
-      security: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Success'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items: { $ref: '#/components/schemas/UserBrief' }
-        '500': { $ref: '#/components/responses/ServerError' }
-
   /api/users/me:
     get:
       tags: [user]
@@ -283,23 +347,38 @@ paths:
         '500': { $ref: '#/components/responses/ServerError' }
     patch:
       tags: [user]
-      summary: 프로필 편집 (PM-03)
+      summary: 프로필 편집 (PM-03) · 학교 선택 (PM-04/AUTH-07)
       description: |
-        **닉네임만** 변경할 수 있다. `school_id`·`position`은 이 API로 바꿀 수 없다
-        (학교 인증 PM-04/AUTH-07 미구현 — api-catalog.md 백로그 P1 참조).
+        `nickname`과 `school_id`를 바꾼다. **둘 다 선택 항목이고 최소 하나는 보내야 한다.**
+        `position`은 여전히 이 API로 바꿀 수 없다(팀 생성·가입 시 결정).
+
+        **학교 선택은 인증의 앞 절반이다.** `GET /api/schools`에서 고른 `school_id`를 여기로 보내면
+        소속이 정해지고, 이어서 `POST /api/auth/email/send` → `/verify`로 대학 이메일 인증을 하면
+        `school_is_verified`가 켜진다. 팀 생성·가입은 **둘 다** 필요하다.
+
+        학교를 바꾸면 `school_is_verified`는 **자동으로 꺼진다** — 새 학교 이메일로 다시 인증해야 한다.
+        개인계좌의 리그 그룹(고교/대학)도 새 학교 기준으로 다시 맞춰진다.
+
+        인증 메일의 도메인이 선택한 학교와 같은 곳인지는 **대조하지 않는다**
+        (도메인 목록이 학교 매핑 없는 평면 allow-list라 대조할 근거가 없음).
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [nickname]
+              minProperties: 1
               properties:
                 nickname:
                   type: string
                   minLength: 1
                   maxLength: 50
                   example: 새닉네임
+                school_id:
+                  type: integer
+                  minimum: 1
+                  description: '`GET /api/schools` 검색 결과의 id'
+                  example: 2
       responses:
         '200':
           description: 수정된 유저 기본 정보
@@ -313,7 +392,18 @@ paths:
                       data: { $ref: '#/components/schemas/UserBasic' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404':
+          description: 사용자 없음 / 존재하지 않는 `school_id`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            팀에 소속된 상태에서 학교 변경 시도. 팀은 학교 단위로 묶여 있어 소속을 바꾸면
+            팀과 학교가 어긋난다(팀 탈퇴 API가 생기면 탈퇴 후 변경 가능).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:
       tags: [user]
@@ -1636,12 +1726,16 @@ paths:
                       data: { $ref: '#/components/schemas/Chart' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404':
-          description: 존재하지 않는 심볼
+          description: |
+            우리가 취급하지 않는 심볼. 형식이 맞아도 Stocks 테이블에 없으면(페어는 core 목록에 없으면)
+            외부 API를 호출하지 않고 여기서 끝난다.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: 외부 시세 제공사 크레딧 소진
+          description: |
+            레이트리밋 초과(`RATE_LIMITED`, `Retry-After` 헤더 동봉) 또는 외부 시세 제공사 크레딧 소진.
+            `before`를 붙인 요청은 캐시를 우회하므로 한도가 따로, 더 좁게 걸려 있다.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1677,12 +1771,15 @@ paths:
                       data: { $ref: '#/components/schemas/Quote' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404':
-          description: 존재하지 않는 심볼
+          description: |
+            우리가 취급하지 않는 심볼. 형식이 맞아도 Stocks 테이블에 없으면(페어는 core 목록에 없으면)
+            외부 API를 호출하지 않고 여기서 끝난다.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429':
-          description: 외부 시세 제공사 크레딧 소진
+          description: |
+            레이트리밋 초과(`RATE_LIMITED`, `Retry-After` 헤더 동봉) 또는 외부 시세 제공사 크레딧 소진.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1886,12 +1983,22 @@ paths:
       summary: 자산(수익률) 추이 (PI-01)
       description: |
         일일 스냅샷을 오름차순으로 전부 반환한다. **기간 파라미터가 없다** —
-        계좌가 시즌 단위(≤90일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 잘라 쓴다.
+        계좌가 시즌 단위(분기 = 90~92일)라 전 구간을 통째로 내리고 1주/1개월 탭은 프론트가 잘라 쓴다.
 
         오늘 점은 마감 배치(평일 16:05 ET) 전까지 없다 →
         라이브 값이 필요하면 `GET /api/accounts/me`의 `total_equity`를 이어 붙일 것.
+
+        **`season_id`를 주면 그 시즌의 추이**를 반환한다(지난 시즌 결과 화면의 수익률 선그래프).
+        시즌 id 목록은 `GET /api/ranking/seasons`. 그 시즌에 참여하지 않았으면
+        404가 아니라 `account_id: null` + 빈 `items`로 200이다 — 그래프가 비는 게 정상 상태.
+      parameters:
+        - name: season_id
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: 생략 시 현재 시즌
       responses:
         '200': { $ref: '#/components/responses/AssetHistoryOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -2218,7 +2325,15 @@ paths:
 
         ⚠️ 응답에 `alignment` 필드는 **없다**. 필요하면 `(team_score − r_percent × 0.9) / 0.1`로 역산할 것.
         동점은 공동 순위(1-2-2-4식).
+
+        **`school_id`를 주면 그 학교의 참여팀만** 반환한다(소속 리더보드에서 학교를 눌렀을 때).
+        이때도 `rank`는 **학교 내 등수가 아니라 리그 전체 순위**이며, `pagination.total`은 필터 후 팀 수다.
+        응답 최상위에 `school_id`가 추가로 실린다.
       parameters:
+        - name: school_id
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: 지정 시 해당 학교의 참여팀만 (리그 전체 순위는 유지)
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/RankingLimit'
       responses:
@@ -2257,6 +2372,7 @@ paths:
             default: individual
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/RankingLimit'
+      x-related: '학교를 눌러 참여팀을 보려면 `GET /api/ranking/teams?school_id=`'
       responses:
         '200':
           description: OK
@@ -2297,11 +2413,89 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/ranking/me/history:
+    get:
+      tags: [ranking]
+      summary: 내 순위 추이 (그래프)
+      description: |
+        일자별 순위·점수를 시간순으로 반환한다 — **지난 시즌 결과 화면의 순위 선그래프**용.
+        라이브 순위판(ZSET)에는 "오늘 값" 하나뿐이라 추이가 없다 → 영구 기록인
+        `DailyRankings`(평일 16:05 ET 스냅샷)를 읽으므로 **시즌이 끝나도 남는다**.
+
+        - `season_id` 생략 시 현재 시즌. 지난 시즌은 `GET /api/ranking/seasons`로 id를 얻어 넘긴다.
+        - `total`은 그날 같은 리그의 전체 모수 → `rank / total`로 "상위 N%"를 만들 수 있다.
+        - 수익률 선그래프는 이 API가 아니라 `GET /api/accounts/me/history?season_id=`를 쓴다
+          (자산 스냅샷이 더 촘촘하고 금액도 함께 준다). 두 그래프를 겹쳐 그리면 디자인의 2선 차트가 된다.
+        - **대상이 없으면 빈 `items`로 200**: 학교 미설정(`school_group: null`) · `scope=team`인데 팀 미소속.
+      parameters:
+        - name: season_id
+          in: query
+          schema: { type: integer, minimum: 1 }
+          description: 생략 시 현재 시즌
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [individual, team, school_individual, school_team]
+            default: individual
+          description: 어느 보드의 추이인지 (개인 / 팀 / 개인 소속 / 팀 소속)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RankHistory' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 존재하지 않는 시즌
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/ranking/seasons:
+    get:
+      tags: [ranking]
+      summary: 시즌 목록
+      description: |
+        전 시즌을 최신순으로 반환한다 — 지난 시즌 결과 화면의 **화살표 내비게이션**용.
+        여기서 얻은 `season_id`를 `/api/ranking/me/history`·`/api/accounts/me/history`에 넘긴다.
+        `is_current: true`가 현재 진행 중인 시즌(= `status: ACTIVE`, 항상 최대 1개).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          seasons:
+                            type: array
+                            items: { $ref: '#/components/schemas/SeasonListItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/ranking/season:
     get:
       tags: [ranking]
       summary: 현재 시즌 기간 · D-day
-      description: '⚠️ 활성 시즌이 없으면 이 호출이 "자동생성 시즌"을 개시한다 — 시즌 종료 시 다음 시즌을 즉시 명시 생성해 둘 것.'
+      description: |
+        시즌은 **분기 단위**(연 4회) — 1/4/7/10월 1일 시작 ~ 그 분기 마지막 날 종료, 이름은 `"2026년 3분기"`.
+
+        종료일이 지난 시즌은 **다음 조회 요청에서 자동으로 닫히고 현재 분기 시즌이 열린다**
+        (전용 스케줄러 없음). 시즌이 바뀌면 계좌도 새로 발급되므로 자산·순위가 초기화된 것처럼 보인다.
+        `total_days`는 분기 길이라 90~92로 달라진다.
       responses:
         '200':
           description: OK
@@ -2469,6 +2663,21 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: |
+        레이트리밋 초과. `Retry-After` 헤더(초)만큼 기다린 뒤 재시도한다.
+        고정 윈도우라 헤더 값은 남은 시간이 아니라 윈도우 길이다(그만큼 기다리면 반드시 풀린다).
+      headers:
+        Retry-After:
+          description: 재시도까지 대기할 초
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            success: false
+            message: 요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.
+            code: RATE_LIMITED
     ServerError:
       description: 서버 내부 오류 (`code` 없음)
       content:
@@ -3269,7 +3478,11 @@ components:
     AssetHistory:
       type: object
       properties:
-        account_id: { type: integer, example: 7 }
+        account_id:
+          type: integer
+          nullable: true
+          description: '요청한 시즌에 참여하지 않았으면 `null` (items도 빈 배열)'
+          example: 7
         season_id: { type: integer, example: 1 }
         items:
           type: array
@@ -3574,13 +3787,57 @@ components:
         rank_change: { $ref: '#/components/schemas/RankChange' }
         score: { type: number, nullable: true, example: 0.438 }
         total_schools: { type: integer, example: 2 }
+    SeasonListItem:
+      type: object
+      properties:
+        season_id: { type: integer, example: 2 }
+        name: { type: string, example: 2026년 2분기 }
+        start_date: { type: string, example: '2026-04-01' }
+        end_date: { type: string, example: '2026-06-30' }
+        total_days: { type: integer, example: 91 }
+        status: { type: string, enum: [UPCOMING, ACTIVE, COMPLETED], example: COMPLETED }
+        is_current: { type: boolean, description: '`status === ACTIVE`', example: false }
+
+    RankHistory:
+      type: object
+      properties:
+        season_id: { type: integer, example: 2 }
+        season_name: { type: string, example: 2026년 2분기 }
+        scope:
+          type: string
+          enum: [individual, team, school_individual, school_team]
+          example: individual
+        school_group: { $ref: '#/components/schemas/SchoolGroup' }
+        target_id:
+          type: integer
+          nullable: true
+          description: '실제 조회 대상 id (scope에 따라 user_id / team_id / school_id). 대상 없으면 `null`.'
+          example: 1
+        items:
+          type: array
+          description: 날짜 오름차순 (그래프 x축 순서). 스냅샷이 없는 날은 점이 없다.
+          items:
+            type: object
+            properties:
+              date: { type: string, example: '2026-06-30' }
+              rank: { type: integer, description: 그날 리그 내 순위, example: 3 }
+              total:
+                type: integer
+                description: '그날 같은 리그의 전체 모수 → `rank / total` = 상위 N%'
+                example: 1284
+              score: { type: number, description: '그날 최종 점수 (개인·개인소속 % / 팀·팀소속 Point)', example: 8.42 }
+              return_rate: { type: number, description: '수익률 %. 팀 보드는 R%, 팀소속은 Point와 동일값', example: 8.42 }
+
     Season:
       type: object
       properties:
-        season_id: { type: integer, example: 1 }
-        name: { type: string, example: 2026 자동생성 시즌 }
-        start_date: { type: string, example: '2026-07-12' }
-        end_date: { type: string, example: '2026-10-09' }
-        total_days: { type: integer, example: 90 }
-        status: { type: string, example: ACTIVE }
-        d_day: { type: integer, description: 오늘부터 종료일까지 남은 일수, example: 73 }
+        season_id: { type: integer, example: 3 }
+        name: { type: string, description: '`"YYYY년 N분기"`', example: 2026년 3분기 }
+        start_date: { type: string, description: 분기 첫날, example: '2026-07-01' }
+        end_date: { type: string, description: 분기 마지막 날, example: '2026-09-30' }
+        total_days:
+          type: integer
+          description: 분기 길이(90~92). 참여율(ParticipationRatio)의 분모.
+          example: 92
+        status: { type: string, enum: [UPCOMING, ACTIVE, COMPLETED], example: ACTIVE }
+        d_day: { type: integer, description: 오늘부터 종료일까지 남은 일수, example: 48 }

@@ -5,6 +5,7 @@ const cors = require('cors');
 const yaml = require('js-yaml');
 const swaggerUi = require('swagger-ui-express');
 const errorHandler = require('./middlewares/errorHandler');
+const rateLimit = require('./middlewares/rateLimit');
 
 // 도메인 라우터
 const authRouter = require('./domains/auth/auth.router');
@@ -22,17 +23,20 @@ const portfolioRouter = require('./domains/portfolio/portfolio.router');
 
 const app = express();
 
+// nginx 리버스 프록시 1홉 뒤에서 돈다(docs/deployment-guide.md §4).
+// 이게 없으면 req.ip가 전부 127.0.0.1이 되어 IP 기준 레이트리밋이 전 사용자를 한 덩어리로 묶는다.
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
 
-// 카카오 OAuth 리다이렉트 콜백 (KAKAO_REDIRECT_URI 대응)
-app.get('/auth/kakao/callback', authController.kakaoLogin);
-
-// 네이버 OAuth 리다이렉트 콜백 (NAVER_REDIRECT_URI 대응)
-app.get('/auth/naver/callback', authController.naverLogin);
-
-// 구글 OAuth 리다이렉트 콜백 (GOOGLE_REDIRECT_URI 대응)
-app.get('/auth/google/callback', authController.googleLogin);
+// OAuth 리다이렉트 콜백 (KAKAO/NAVER/GOOGLE_REDIRECT_URI 대응)
+// /api/auth/{provider}와 같은 컨트롤러라 레이트리밋도 같은 키를 공유해야 한다
+// (한쪽만 걸면 다른 쪽으로 그대로 우회된다).
+const loginLimit = rateLimit('login', 60, 300);
+app.get('/auth/kakao/callback', loginLimit, authController.kakaoLogin);
+app.get('/auth/naver/callback', loginLimit, authController.naverLogin);
+app.get('/auth/google/callback', loginLimit, authController.googleLogin);
 
 // 라우터 연결
 app.use('/api/auth', authRouter);

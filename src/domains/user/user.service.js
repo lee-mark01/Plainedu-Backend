@@ -1,10 +1,9 @@
 const userRepository = require('./user.repository');
 const rankingService = require('../ranking/ranking.service');
+const teamRepository = require('../team/team.repository');
+const schoolRepository = require('../school/school.repository');
+const accountService = require('../account/account.service');
 const AppError = require('../../errors/AppError');
-
-const getUsers = async () => {
-  return await userRepository.findAll();
-};
 
 // PM-01: 마이페이지 프로필 조회
 const getMyProfile = async (userId) => {
@@ -53,13 +52,37 @@ const getMyProfile = async (userId) => {
   };
 };
 
-// PM-03: 프로필 편집
-const updateMyProfile = async (userId, { nickname }) => {
+// PM-03: 프로필 편집 (+ PM-04/AUTH-07의 학교 선택)
+//
+// 학교 선택 → 이메일 인증 순서다. 여기서는 school_id만 정하고 school_is_verified는 끈 채로 둔다
+// (userRepository.updateSchool이 한 문장으로 처리) → 이어서 POST /api/auth/email/send·verify로 인증.
+// 학교를 다시 고르면 같은 흐름을 그대로 반복한다.
+//
+// 알려진 한계: 인증 메일 도메인이 선택한 학교와 같은 곳인지는 대조하지 않는다
+// (도메인 목록이 학교 매핑 없는 평면 allow-list라 대조할 근거가 없음 — 기획 확인 후 별건).
+const updateMyProfile = async (userId, { nickname, school_id: schoolId }) => {
   const user = await userRepository.findById(userId);
   if (!user) throw new AppError('사용자를 찾을 수 없습니다.', 404);
 
   if (nickname) {
     await userRepository.updateNickname(userId, nickname);
+  }
+
+  if (schoolId !== undefined && schoolId !== user.school_id) {
+    // 팀은 학교 단위로 묶여 있다(team.service.js:47의 팀-유저 학교 일치 요구). 소속된 채로 바꾸면
+    // 팀과 학교가 어긋나고 랭킹 집계도 갈라진다.
+    // ponytail: 팀 탈퇴 API가 생기면 "탈퇴 후 변경"으로 자연히 풀린다.
+    const membership = await teamRepository.findMembershipByUserId(userId);
+    if (membership) {
+      throw new AppError('팀에 소속된 상태에서는 학교를 변경할 수 없습니다.', 409);
+    }
+
+    // FK에 맡기면 없는 학교일 때 500이 난다 — 400/404로 잡아준다.
+    const school = await schoolRepository.findById(schoolId);
+    if (!school) throw new AppError('존재하지 않는 학교입니다.', 404);
+
+    await userRepository.updateSchool(userId, schoolId);
+    await accountService.syncIndividualAccountSchoolGroup(userId, schoolId);
   }
 
   return userRepository.findById(userId);
@@ -74,5 +97,5 @@ const deleteMyAccount = async (userId) => {
 };
 
 module.exports = {
-  getUsers, getMyProfile, updateMyProfile, deleteMyAccount,
+  getMyProfile, updateMyProfile, deleteMyAccount,
 };
