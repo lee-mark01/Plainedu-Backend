@@ -104,17 +104,18 @@
 
 ### `PATCH /api/users/me` 🔒
 
-닉네임을 수정한다.
+닉네임 또는 학교를 수정한다. 온보딩에서는 `school_id`만 보낼 수 있다. 학교가 바뀌면 기존 학교 인증은 해제되며, 팀 소속 중에는 학교를 변경할 수 없다.
 
 **Request Body**
 
 ```json
-{ "nickname": "새닉네임" }
+{ "nickname": "새닉네임", "school_id": 42 }
 ```
 
 | 필드 | 타입 | 필수 | 제약 |
 |---|---|---|---|
-| `nickname` | string | O | 1~50자 |
+| `nickname` | string | 조건부 | 1~50자 |
+| `school_id` | integer | 조건부 | 1 이상의 존재하는 학교 ID. 둘 중 한 필드는 필수 |
 
 **Response 200** — 수정된 유저 기본 정보
 

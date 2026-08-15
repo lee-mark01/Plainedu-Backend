@@ -1,5 +1,8 @@
 const userRepository = require('./user.repository');
 const rankingService = require('../ranking/ranking.service');
+const teamRepository = require('../team/team.repository');
+const schoolRepository = require('../school/school.repository');
+const accountService = require('../account/account.service');
 const AppError = require('../../errors/AppError');
 
 const getUsers = async () => {
@@ -54,12 +57,25 @@ const getMyProfile = async (userId) => {
 };
 
 // PM-03: 프로필 편집
-const updateMyProfile = async (userId, { nickname }) => {
+const updateMyProfile = async (userId, { nickname, school_id: schoolId }) => {
   const user = await userRepository.findById(userId);
   if (!user) throw new AppError('사용자를 찾을 수 없습니다.', 404);
 
   if (nickname) {
     await userRepository.updateNickname(userId, nickname);
+  }
+
+  if (schoolId !== undefined && schoolId !== user.school_id) {
+    const membership = await teamRepository.findMembershipByUserId(userId);
+    if (membership) {
+      throw new AppError('팀에 소속된 상태에서는 학교를 변경할 수 없습니다.', 409);
+    }
+
+    const school = await schoolRepository.findById(schoolId);
+    if (!school) throw new AppError('존재하지 않는 학교입니다.', 404);
+
+    await userRepository.updateSchool(userId, schoolId);
+    await accountService.syncIndividualAccountSchoolGroup(userId, schoolId);
   }
 
   return userRepository.findById(userId);
