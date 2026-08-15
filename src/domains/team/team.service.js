@@ -1,6 +1,7 @@
 const AppError = require('../../errors/AppError');
 const teamRepository = require('./team.repository');
 const userRepository = require('../user/user.repository');
+const schoolRepository = require('../school/school.repository');
 const accountService = require('../account/account.service');
 
 // 팀 소속 확인 헬퍼 — portfolio/teamOrder 등 "팀원만 접근 가능"한 기능들이 공유
@@ -10,11 +11,26 @@ const requireTeamMembership = async (userId) => {
   return membership;
 };
 
-const createTeam = async (user_id, name, max_member_count, position) => {
-  const user = await userRepository.findById(user_id);
-  if (!user.school_id || !user.school_is_verified) {
+const assertTeamSchoolEligibility = (user, school) => {
+  if (!user?.school_id || !school) {
+    throw new AppError('학교 선택이 필요합니다.', 403);
+  }
+  // 대학은 학교 이메일 인증을 요구한다. 고교 SMS 인증은 별도 백로그이므로
+  // 현재는 커리어넷 학교 선택을 기준으로 팀 온보딩을 허용한다.
+  if (school.school_group !== 'HIGH_SCHOOL' && !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
   }
+};
+
+const requireTeamSchoolEligibility = async (user) => {
+  const school = user?.school_id ? await schoolRepository.findById(user.school_id) : null;
+  assertTeamSchoolEligibility(user, school);
+  return school;
+};
+
+const createTeam = async (user_id, name, max_member_count, position) => {
+  const user = await userRepository.findById(user_id);
+  await requireTeamSchoolEligibility(user);
 
   const existing = await teamRepository.findMembershipByUserId(user_id);
   if (existing) {
@@ -31,9 +47,7 @@ const createTeam = async (user_id, name, max_member_count, position) => {
 
 const joinTeam = async (user_id, join_code, position) => {
   const user = await userRepository.findById(user_id);
-  if (!user.school_id || !user.school_is_verified) {
-    throw new AppError('학교 인증이 필요합니다.', 403);
-  }
+  await requireTeamSchoolEligibility(user);
 
   const existing = await teamRepository.findMembershipByUserId(user_id);
   if (existing) {
@@ -60,9 +74,7 @@ const joinTeam = async (user_id, join_code, position) => {
 
 const listTeams = async (user_id, { keyword, limit }) => {
   const user = await userRepository.findById(user_id);
-  if (!user.school_id || !user.school_is_verified) {
-    throw new AppError('학교 인증이 필요합니다.', 403);
-  }
+  await requireTeamSchoolEligibility(user);
 
   return teamRepository.findBySchool({ school_id: user.school_id, keyword, limit });
 };
@@ -85,4 +97,12 @@ const resolveMyTeamAccount = async (user_id) => {
   return accountService.getOrCreateTeamAccount(team.id, team.school_id);
 };
 
-module.exports = { createTeam, joinTeam, listTeams, getMyTeam, requireTeamMembership, resolveMyTeamAccount };
+module.exports = {
+  createTeam,
+  joinTeam,
+  listTeams,
+  getMyTeam,
+  requireTeamMembership,
+  resolveMyTeamAccount,
+  assertTeamSchoolEligibility,
+};

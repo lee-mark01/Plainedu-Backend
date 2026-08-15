@@ -57,7 +57,7 @@
 
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
-| POST | `/api/teams` | 🔒 | 팀 생성 (+팀 계좌 자동 생성). body `{ name, position: TRADER\|ANALYST, [max_member_count=4] }` — **학교 인증 필수(미인증 403)**, 이미 팀 있으면 409 |
+| POST | `/api/teams` | 🔒 | 팀 생성 (+팀 계좌 자동 생성). body `{ name, position: TRADER\|ANALYST, [max_member_count=4] }` — 대학은 이메일 인증, 고교는 학교 선택 필수(미충족 403), 이미 팀 있으면 409 |
 | POST | `/api/teams/join` | 🔒 | 팀 가입. body `{ join_code(8자), position }` — 같은 학교 팀만(403), 정원 초과 409, 코드 오류 404 |
 | GET | `/api/teams?keyword=&limit=` | 🔒 | **같은 학교** 팀 목록/검색 (limit 기본 20·최대 50, `page` 없음) |
 | GET | `/api/teams/me` | 🔒 | 내 팀 조회. ⚠️ `members[]`에 `role`(LEADER/MEMBER)만 있고 `position`(TRADER/ANALYST)은 없다 (P2 참조) |
@@ -188,7 +188,7 @@
 
 | API | 도메인 | 근거/비고 |
 |---|---|---|
-| 🚨 **학교 설정·인증** = **PM-04 / AUTH-07** ([mypage-api.md §5](mypage-api.md#5-미구현-기능-및-근거)) | user / school | **다른 팀원 담당 — 이 브랜치에서 건드리지 않는다.** 인증 수단·심사 절차 미확정으로 보류. 다만 영향 범위가 마이페이지 한 칸이 아니라는 점은 공유 필요: `school_id`·`school_is_verified`가 읽기 전용이라 팀 생성·가입이 403([team.service.js:15](../src/domains/team/team.service.js#L15))이고 리그 보드에도 못 오른다(`school_group: null`) → **팀 모드 전 화면의 선행 블로커** |
+| ⚠️ **고교 SMS 인증** = **PM-04 / AUTH-07** | user / school | 대학 이메일 인증은 지원한다. 고교는 현재 커리어넷 학교 선택으로 팀 온보딩을 허용하며, SMS 인증 결과를 백엔드 신뢰 상태로 연결하는 작업은 후속 과제다. |
 
 ## P2 — 화면상 필요한데 계획에 없음 (기획 확인 후 배분)
 
