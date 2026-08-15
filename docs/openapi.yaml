@@ -349,21 +349,26 @@ paths:
       tags: [user]
       summary: 프로필 편집 (PM-03)
       description: |
-        **닉네임만** 변경할 수 있다. `school_id`·`position`은 이 API로 바꿀 수 없다
-        (학교 인증 PM-04/AUTH-07 미구현 — api-catalog.md 백로그 P1 참조).
+        닉네임 또는 학교를 변경한다. 온보딩에서 `school_id`만 보내는 요청도 허용한다.
+        학교를 변경하면 기존 학교 인증은 해제되고 개인 계좌의 학교 그룹이 동기화된다.
+        팀에 소속된 사용자는 학교를 변경할 수 없다. `position` 변경은 지원하지 않는다.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [nickname]
+              minProperties: 1
               properties:
                 nickname:
                   type: string
                   minLength: 1
                   maxLength: 50
                   example: 새닉네임
+                school_id:
+                  type: integer
+                  minimum: 1
+                  example: 42
       responses:
         '200':
           description: 수정된 유저 기본 정보
@@ -377,6 +382,11 @@ paths:
                       data: { $ref: '#/components/schemas/UserBasic' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: 팀 소속 중 학교 변경 시도
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:

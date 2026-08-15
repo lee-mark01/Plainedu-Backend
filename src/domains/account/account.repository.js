@@ -49,7 +49,7 @@ const createVirtualAccount = async (
 };
 
 const updateAccountSchoolGroup = async (executor, accountId, schoolGroup) => {
-  await executor.query('UPDATE VirtualAccounts SET school_group = ? WHERE id = ? AND school_group IS NULL', [
+  await executor.query('UPDATE VirtualAccounts SET school_group = ? WHERE id = ?', [
     schoolGroup,
     accountId,
   ]);

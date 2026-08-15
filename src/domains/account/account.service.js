@@ -81,6 +81,18 @@ const getOrCreateIndividualAccount = async (userId) => {
   return account;
 };
 
+const syncIndividualAccountSchoolGroup = async (userId, schoolId) => {
+  const season = await getActiveSeason();
+  if (!season) return;
+  const account = await accountRepository.findIndividualAccount(pool, userId, season.id);
+  if (!account) return;
+
+  const schoolGroup = await deriveSchoolGroup(schoolId);
+  if (schoolGroup && schoolGroup !== account.school_group) {
+    await accountRepository.updateAccountSchoolGroup(pool, account.id, schoolGroup);
+  }
+};
+
 const getOrCreateTeamAccount = async (teamId, schoolId) => {
   const season = await getOrCreateActiveSeason();
   const existing = await accountRepository.findTeamAccount(pool, teamId, season.id);
@@ -121,6 +133,7 @@ module.exports = {
   recordDailyAssetHistories,
   deriveSchoolGroup,
   getOrCreateIndividualAccount,
+  syncIndividualAccountSchoolGroup,
   getOrCreateTeamAccount,
   getAssetHistory,
 };

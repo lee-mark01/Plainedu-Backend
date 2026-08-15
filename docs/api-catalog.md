@@ -43,7 +43,7 @@
 | GET | `/api/users/attendance/streak` | 🔒 | 이번 주(월~일) 출석 + 연속학습일 (칭찬 화면용) |
 | GET | `/api/users/attendance?year=&month=` | 🔒 | 월별 출석 조회 |
 | GET | `/api/users/me` | 🔒 | 마이페이지 프로필 (PM-01) — 닉네임·학교·팀·출석·포인트·리그순위·자산요약 |
-| PATCH | `/api/users/me` | 🔒 | 프로필 편집 (PM-03) — body `{ nickname }` **만**. ⚠️ `school_id`·`position`은 변경 불가 (백로그 P1 참조) |
+| PATCH | `/api/users/me` | 🔒 | 프로필 편집 (PM-03) — body `{ nickname }`, `{ school_id }` 또는 둘 다. 학교 변경 시 인증 해제·개인 계좌 학교 그룹 동기화. 팀 소속 중 학교 변경 불가 |
 | DELETE | `/api/users/me` | 🔒 | 회원 탈퇴 (AUTH-14) — CASCADE로 관련 데이터 삭제 |
 
 ## school — 학교 (`/api/schools`)
