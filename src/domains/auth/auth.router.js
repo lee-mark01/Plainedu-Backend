@@ -9,6 +9,7 @@ const { sendCodeSchema, verifyCodeSchema } = require('./emailVerification.valida
 router.post('/kakao', authController.kakaoLogin);
 router.post('/naver', authController.naverLogin);
 router.post('/google', authController.googleLogin);
+router.post('/firebase-token', authController.firebaseTokenLogin);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 
