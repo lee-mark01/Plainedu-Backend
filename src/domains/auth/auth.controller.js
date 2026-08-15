@@ -1,4 +1,15 @@
 const authService = require('./auth.service');
+const authRepository = require('./auth.repository');
+const accountService = require('../account/account.service');
+const tokenTools = require('../../utils/jwt');
+const { verifyFirebaseIdToken } = require('./firebaseToken.verifier');
+const { createFirebaseTokenService } = require('./firebaseToken.service');
+
+const firebaseTokenService = createFirebaseTokenService({
+  repository: authRepository,
+  accountService,
+  tokenTools,
+});
 
 const kakaoLogin = async (req, res, next) => {
   try {
@@ -62,6 +73,23 @@ const googleLogin = async (req, res, next) => {
   }
 };
 
+const firebaseTokenLogin = async (req, res, next) => {
+  try {
+    const decodedToken = await verifyFirebaseIdToken(req.body?.idToken);
+    const { accessToken, refreshToken, user, isNew } = await firebaseTokenService.exchange(decodedToken, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.status(isNew ? 201 : 200).json({
+      success: true,
+      data: { accessToken, refreshToken, user },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const refresh = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
@@ -84,4 +112,4 @@ const logout = async (req, res, next) => {
   }
 };
 
-module.exports = { kakaoLogin, naverLogin, googleLogin, refresh, logout };
+module.exports = { kakaoLogin, naverLogin, googleLogin, firebaseTokenLogin, refresh, logout };

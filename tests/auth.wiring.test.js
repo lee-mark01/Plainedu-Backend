@@ -119,6 +119,12 @@ test('GET /api/health — 인증 없이 열려 있다', async () => {
   assert.strictEqual(res.status, 200);
 });
 
+test('POST /api/auth/firebase-token — ID 토큰이 없으면 400으로 거부한다', async () => {
+  const res = await call('POST', '/api/auth/firebase-token', { body: {} });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual((await res.json()).code, 'FIREBASE_TOKEN_REQUIRED');
+});
+
 test('Authorization 헤더가 Bearer 형식이 아니면 401', async () => {
   const res = await fetch(`${base}/api/accounts/me`, { headers: { Authorization: 'abc123' } });
   assert.strictEqual(res.status, 401);
