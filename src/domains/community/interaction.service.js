@@ -4,8 +4,8 @@ const postRepository = require('./post.repository');
 const commentRepository = require('./comment.repository');
 
 // 게시글 좋아요 토글
-const togglePostLike = async (user_id, post_id) => {
-  const post = await postRepository.findById(post_id);
+const togglePostLike = async (user_id, post_id, qaSessionId) => {
+  const post = await postRepository.findById(post_id, qaSessionId);
   if (!post) throw new AppError('Post not found', 404);
 
   const existing = await interactionRepository.findPostLike(user_id, post_id);
@@ -18,9 +18,9 @@ const togglePostLike = async (user_id, post_id) => {
 };
 
 // 댓글 좋아요 토글
-const toggleCommentLike = async (user_id, comment_id) => {
+const toggleCommentLike = async (user_id, comment_id, qaSessionId) => {
   const comment = await commentRepository.findById(comment_id);
-  if (!comment) throw new AppError('Comment not found', 404);
+  if (!comment || !(await postRepository.findById(comment.post_id, qaSessionId))) throw new AppError('Comment not found', 404);
 
   const existing = await interactionRepository.findCommentLike(user_id, comment_id);
   if (existing) {
@@ -32,8 +32,8 @@ const toggleCommentLike = async (user_id, comment_id) => {
 };
 
 // 스크랩 토글
-const toggleBookmark = async (user_id, post_id) => {
-  const post = await postRepository.findById(post_id);
+const toggleBookmark = async (user_id, post_id, qaSessionId) => {
+  const post = await postRepository.findById(post_id, qaSessionId);
   if (!post) throw new AppError('Post not found', 404);
 
   const existing = await interactionRepository.findBookmark(user_id, post_id);
@@ -46,8 +46,8 @@ const toggleBookmark = async (user_id, post_id) => {
 };
 
 // 조회수 기록
-const recordPostView = async (user_id, post_id) => {
-  const post = await postRepository.findById(post_id);
+const recordPostView = async (user_id, post_id, qaSessionId) => {
+  const post = await postRepository.findById(post_id, qaSessionId);
   if (!post) throw new AppError('Post not found', 404);
 
   const existing = await interactionRepository.findPostView(user_id, post_id);

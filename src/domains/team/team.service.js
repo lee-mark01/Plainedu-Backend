@@ -10,7 +10,7 @@ const requireTeamMembership = async (userId) => {
   return membership;
 };
 
-const createTeam = async (user_id, name, max_member_count, position) => {
+const createTeam = async (user_id, name, max_member_count, position, qaSessionId) => {
   const user = await userRepository.findById(user_id);
   if (!user.school_id || !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
@@ -21,7 +21,7 @@ const createTeam = async (user_id, name, max_member_count, position) => {
     throw new AppError('이미 팀에 소속되어 있습니다.', 409);
   }
 
-  const team_id = await teamRepository.createTeamWithLeader(user.school_id, name, max_member_count, user_id);
+  const team_id = await teamRepository.createTeamWithLeader(user.school_id, name, max_member_count, user_id, qaSessionId);
   await accountService.getOrCreateTeamAccount(team_id, user.school_id);
   await userRepository.updatePosition(user_id, position);
   const team = await teamRepository.findById(team_id);
@@ -29,7 +29,7 @@ const createTeam = async (user_id, name, max_member_count, position) => {
   return { ...team, members };
 };
 
-const joinTeam = async (user_id, join_code, position) => {
+const joinTeam = async (user_id, join_code, position, qaSessionId) => {
   const user = await userRepository.findById(user_id);
   if (!user.school_id || !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
@@ -40,7 +40,7 @@ const joinTeam = async (user_id, join_code, position) => {
     throw new AppError('이미 팀에 소속되어 있습니다.', 409);
   }
 
-  const team = await teamRepository.findByJoinCode(join_code);
+  const team = await teamRepository.findByJoinCode(join_code, qaSessionId);
   if (!team) {
     throw new AppError('유효하지 않은 가입 코드입니다.', 404);
   }
@@ -58,13 +58,13 @@ const joinTeam = async (user_id, join_code, position) => {
   return { ...updated, members };
 };
 
-const listTeams = async (user_id, { keyword, limit }) => {
+const listTeams = async (user_id, { keyword, limit }, qaSessionId) => {
   const user = await userRepository.findById(user_id);
   if (!user.school_id || !user.school_is_verified) {
     throw new AppError('학교 인증이 필요합니다.', 403);
   }
 
-  return teamRepository.findBySchool({ school_id: user.school_id, keyword, limit });
+  return teamRepository.findBySchool({ school_id: user.school_id, keyword, limit, qaSessionId });
 };
 
 const getMyTeam = async (user_id) => {

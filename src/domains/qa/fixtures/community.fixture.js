@@ -1,19 +1,19 @@
 const { insert } = require('./sql');
 
-const seedCommunity = async (executor, { now, users }) => {
+const seedCommunity = async (executor, { qaSessionId, now, users }) => {
   const postId = await insert(
     executor,
     `INSERT INTO CommunityPosts
-       (user_id, post_type, stock_code, opinion, title, content, view_count, like_count, comment_count, created_at)
-     VALUES (?, 'STOCK_DISCUSSION', 'AAPL', 'BUY', ?, ?, 24, 2, 1, ?)`,
-    [users[1].id, 'QA 애플 토론', 'QA fixture로 생성된 투자 의견입니다.', now]
+       (user_id, post_type, stock_code, opinion, title, content, view_count, like_count, comment_count, created_at, qa_session_id)
+     VALUES (?, 'STOCK_DISCUSSION', 'AAPL', 'BUY', ?, ?, 24, 2, 1, ?, ?)`,
+    [users[1].id, 'QA 애플 토론', 'QA fixture로 생성된 투자 의견입니다.', now, qaSessionId]
   );
   const rootPostId = await insert(
     executor,
     `INSERT INTO CommunityPosts
-       (user_id, post_type, title, content, view_count, like_count, comment_count, created_at)
-     VALUES (?, 'GENERAL', ?, ?, 8, 1, 0, ?)`,
-    [users[0].id, 'QA 첫 게시글', 'QA 세션에서 수정·삭제할 수 있는 게시글입니다.', now]
+       (user_id, post_type, title, content, view_count, like_count, comment_count, created_at, qa_session_id)
+     VALUES (?, 'GENERAL', ?, ?, 8, 1, 0, ?, ?)`,
+    [users[0].id, 'QA 첫 게시글', 'QA 세션에서 수정·삭제할 수 있는 게시글입니다.', now, qaSessionId]
   );
   const commentId = await insert(
     executor,

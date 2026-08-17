@@ -6,7 +6,7 @@ const createPost = async (req, res, next) => {
   try {
     const { post_type, stock_code, opinion, title, content } = req.validated;
     const user_id = req.user.userId;
-    const post = await communityService.createPost(user_id, post_type, stock_code, opinion, title, content);
+    const post = await communityService.createPost(user_id, post_type, stock_code, opinion, title, content, req.user.qaSessionId);
     res.status(201).json({ success: true, data: post });
   } catch (err) {
     next(err);
@@ -19,7 +19,7 @@ const updatePost = async (req, res, next) => {
     const post_id = Number(req.params.id);
     const user_id = req.user.userId;
     const updateData = req.validated;
-    const post = await communityService.updatePost(post_id, user_id, updateData);
+    const post = await communityService.updatePost(post_id, user_id, updateData, req.user.qaSessionId);
     res.json({ success: true, data: post });
   }
   catch (err) {
@@ -32,7 +32,7 @@ const deletePost = async (req, res, next) => {
   try {
     const post_id = Number(req.params.id);
     const user_id = req.user.userId;
-    await communityService.deletePost(post_id, user_id);
+    await communityService.deletePost(post_id, user_id, req.user.qaSessionId);
     res.status(200).json({ success: true, message: '게시글이 삭제되었습니다.' });
   } catch (err) {
     next(err);
@@ -43,7 +43,7 @@ const deletePost = async (req, res, next) => {
 const getPostById = async (req, res, next) => {
   try {
     const post_id = req.params.id;
-    const post = await communityService.getPostById(post_id);
+    const post = await communityService.getPostById(post_id, req.user?.qaSessionId);
     res.json({ success: true, data: post });
   } catch (err) {
     next(err);
@@ -54,7 +54,7 @@ const getPostById = async (req, res, next) => {
 const getPostsByCursor = async (req, res, next) => {
   try {
     const { cursor, limit, post_type, stock_code, keyword, search_type } = req.validated;
-    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, post_type, stock_code, keyword, search_type });
+    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, post_type, stock_code, keyword, search_type, qaSessionId: req.user?.qaSessionId });
     res.json({ success: true, data: { posts, hasNext } });
   }
   catch (err) {
@@ -67,7 +67,7 @@ const getMyPosts = async (req, res, next) => {
   try {
     const user_id = req.user.userId;
     const { cursor, limit } = req.validated;
-    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, user_id });
+    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, user_id, qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data: { posts, hasNext } });
   }
   catch (err) {

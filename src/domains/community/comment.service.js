@@ -4,8 +4,8 @@ const postRepository = require('./post.repository');
 const notificationService = require('./notification.service');
 
 // 댓글 생성
-const createComment = async (user_id, post_id, content, parent_id) => {
-    const post = await postRepository.findById(post_id);
+const createComment = async (user_id, post_id, content, parent_id, qaSessionId) => {
+    const post = await postRepository.findById(post_id, qaSessionId);
     if (!post) {
         throw new AppError('Post not found', 404);
     }
@@ -36,9 +36,9 @@ const createComment = async (user_id, post_id, content, parent_id) => {
 };
 
 // 댓글 수정
-const updateComment = async (user_id, comment_id, content) => {
+const updateComment = async (user_id, comment_id, content, qaSessionId) => {
     const comment = await commentRepository.findById(comment_id);
-    if (!comment) {
+    if (!comment || !(await postRepository.findById(comment.post_id, qaSessionId))) {
         throw new AppError('Comment not found', 404);
     }
     if (comment.user_id !== user_id) {
@@ -49,9 +49,9 @@ const updateComment = async (user_id, comment_id, content) => {
 };
 
 // 댓글 삭제
-const deleteComment = async (user_id, comment_id) => {
+const deleteComment = async (user_id, comment_id, qaSessionId) => {
     const comment = await commentRepository.findById(comment_id);
-    if (!comment) {
+    if (!comment || !(await postRepository.findById(comment.post_id, qaSessionId))) {
         throw new AppError('Comment not found', 404);
     }
     if (comment.user_id !== user_id) {
@@ -112,8 +112,8 @@ const buildCommentTree = (comments) => {
 };
 
 // 댓글 목록 조회 (댓글 + 대댓글 트리 구조)
-const getCommentsByPostId = async (post_id) => {
-    const post = await postRepository.findById(post_id);
+const getCommentsByPostId = async (post_id, qaSessionId) => {
+    const post = await postRepository.findById(post_id, qaSessionId);
     if (!post) {
         throw new AppError('Post not found', 404);
     }

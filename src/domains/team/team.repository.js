@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const pool = require('../../config/db');
 const AppError = require('../../errors/AppError');
+const { appendQaScope } = require('../qa/qa.scope');
 
 const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
@@ -27,8 +28,11 @@ const findMembershipByUserId = async (user_id) => {
   return rows[0] || null;
 };
 
-const findByJoinCode = async (join_code) => {
-  const [rows] = await pool.query('SELECT * FROM Teams WHERE join_code = ?', [join_code]);
+const findByJoinCode = async (join_code, qaSessionId = null) => {
+  const conditions = ['join_code = ?'];
+  const params = [join_code];
+  appendQaScope({ conditions, params, alias: 'Teams', qaSessionId });
+  const [rows] = await pool.query(`SELECT * FROM Teams WHERE ${conditions.join(' AND ')}`, params);
   return rows[0] || null;
 };
 
@@ -38,9 +42,10 @@ const findById = async (team_id) => {
 };
 
 // 같은 학교 팀 목록/검색 (팀명, 인원수 제공)
-const findBySchool = async ({ school_id, keyword, limit }) => {
+const findBySchool = async ({ school_id, keyword, limit, qaSessionId = null }) => {
   const conditions = ['school_id = ?'];
   const params = [school_id];
+  appendQaScope({ conditions, params, alias: 'Teams', qaSessionId });
 
   if (keyword) {
     conditions.push('name LIKE ?');
@@ -68,14 +73,14 @@ const findMembersByTeamId = async (team_id) => {
 };
 
 // 트랜잭션 내에서 팀 생성 + 리더 등록
-const createTeamWithLeader = async (school_id, name, max_member_count, user_id) => {
+const createTeamWithLeader = async (school_id, name, max_member_count, user_id, qaSessionId = null) => {
   const join_code = await createUniqueJoinCode();
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [teamResult] = await conn.query(
-      'INSERT INTO Teams (school_id, name, join_code, max_member_count, current_member_count) VALUES (?, ?, ?, ?, 1)',
-      [school_id, name, join_code, max_member_count]
+      'INSERT INTO Teams (school_id, name, join_code, max_member_count, current_member_count, qa_session_id) VALUES (?, ?, ?, ?, 1, ?)',
+      [school_id, name, join_code, max_member_count, qaSessionId]
     );
     const team_id = teamResult.insertId;
     await conn.query(

@@ -4,6 +4,7 @@ const http = require('http');
 const app = require('./app');
 const redis = require('./config/redis');
 const tokenCleanup = require('./jobs/tokenCleanup');
+const qaSessionCleanup = require('./jobs/qaSessionCleanup');
 const rankingScheduler = require('./jobs/rankingScheduler');
 const marketData = require('./marketData');
 const matchingService = require('./domains/trading/matching.service');
@@ -18,6 +19,7 @@ marketData.onPriceUpdate((symbol, price) => matchingService.handlePriceUpdate(sy
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   tokenCleanup.start();
+  qaSessionCleanup.start();
   rankingScheduler.start();
 });
 
@@ -25,6 +27,7 @@ server.listen(PORT, () => {
 const shutdown = (signal) => {
   console.log(`\n[${signal}] 서버 종료 중...`);
   rankingScheduler.stop();
+  qaSessionCleanup.stop();
   marketData.stop();
   redis.quit().catch(() => {});
   server.close(() => process.exit(0));

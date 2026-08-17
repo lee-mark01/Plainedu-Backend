@@ -67,7 +67,7 @@ const getMyRanking = async (req, res, next) => {
 const getMyRankHistory = async (req, res, next) => {
   try {
     const { season_id: seasonId, scope } = req.validated;
-    const data = await rankingService.getMyRankHistory(req.user.userId, { seasonId, scope });
+    const data = await rankingService.getMyRankHistory(req.user.userId, { seasonId, scope, qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);

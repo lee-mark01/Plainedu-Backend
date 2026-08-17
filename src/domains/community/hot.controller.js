@@ -3,7 +3,7 @@ const hotService = require('./hot.service');
 const getHotStocks = async (req, res, next) => {
   try {
     const { limit } = req.validated;
-    const stocks = await hotService.getHotStocks(limit);
+    const stocks = await hotService.getHotStocks(limit, req.user?.qaSessionId);
     res.status(200).json({ success: true, data: stocks });
   } catch (err) {
     next(err);
@@ -13,7 +13,7 @@ const getHotStocks = async (req, res, next) => {
 const getPopularPosts = async (req, res, next) => {
   try {
     const { limit } = req.validated;
-    const posts = await hotService.getPopularPosts(limit);
+    const posts = await hotService.getPopularPosts(limit, req.user?.qaSessionId);
     res.status(200).json({ success: true, data: posts });
   } catch (err) {
     next(err);

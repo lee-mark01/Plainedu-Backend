@@ -6,7 +6,7 @@ const createComment = async (req, res, next) => {
         const post_id = Number(req.params.post_id);
         const user_id = req.user.userId;
         const { parent_id, content } = req.validated;
-        const comment = await commentService.createComment(user_id, post_id, content, parent_id);
+        const comment = await commentService.createComment(user_id, post_id, content, parent_id, req.user.qaSessionId);
         res.status(201).json({ success: true, data: comment });
     } catch (err) {
         next(err);
@@ -19,7 +19,7 @@ const updateComment = async (req, res, next) => {
         const comment_id = Number(req.params.comment_id);
         const user_id = req.user.userId;
         const { content } = req.validated;
-        const comment = await commentService.updateComment(user_id, comment_id, content);
+        const comment = await commentService.updateComment(user_id, comment_id, content, req.user.qaSessionId);
         res.status(200).json({ success: true, data: comment });
     } catch (err) {
         next(err);
@@ -31,7 +31,7 @@ const deleteComment = async (req, res, next) => {
     try {
         const comment_id = Number(req.params.comment_id);
         const user_id = req.user.userId;
-        await commentService.deleteComment(user_id, comment_id);
+        await commentService.deleteComment(user_id, comment_id, req.user.qaSessionId);
         res.status(200).json({ success: true, message: '댓글이 삭제되었습니다.' });
     } catch (err) {
         next(err);
@@ -42,7 +42,7 @@ const deleteComment = async (req, res, next) => {
 const getCommentsByPostId = async (req, res, next) => {
     try {
         const post_id = Number(req.params.post_id);
-        const comments = await commentService.getCommentsByPostId(post_id);
+        const comments = await commentService.getCommentsByPostId(post_id, req.user?.qaSessionId);
         res.status(200).json({ success: true, data: comments });
     } catch (err) {
         next(err);

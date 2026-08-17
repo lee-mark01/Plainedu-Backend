@@ -6,7 +6,7 @@ const createTeam = async (req, res, next) => {
   try {
     const user_id = req.user.userId;
     const { name, max_member_count, position } = req.validated;
-    const team = await teamService.createTeam(user_id, name, max_member_count, position);
+    const team = await teamService.createTeam(user_id, name, max_member_count, position, req.user.qaSessionId);
     res.status(201).json({ success: true, data: team });
   } catch (err) {
     next(err);
@@ -17,7 +17,7 @@ const joinTeam = async (req, res, next) => {
   try {
     const user_id = req.user.userId;
     const { join_code, position } = req.validated;
-    const team = await teamService.joinTeam(user_id, join_code, position);
+    const team = await teamService.joinTeam(user_id, join_code, position, req.user.qaSessionId);
     res.json({ success: true, data: team });
   } catch (err) {
     next(err);
@@ -27,7 +27,7 @@ const joinTeam = async (req, res, next) => {
 const listTeams = async (req, res, next) => {
   try {
     const user_id = req.user.userId;
-    const teams = await teamService.listTeams(user_id, req.validated);
+    const teams = await teamService.listTeams(user_id, req.validated, req.user.qaSessionId);
     res.json({ success: true, data: teams });
   } catch (err) {
     next(err);

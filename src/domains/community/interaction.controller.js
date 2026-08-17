@@ -5,7 +5,7 @@ const togglePostLike = async (req, res, next) => {
   try {
     const post_id = Number(req.params.post_id);
     const user_id = req.user.userId;
-    const result = await interactionService.togglePostLike(user_id, post_id);
+    const result = await interactionService.togglePostLike(user_id, post_id, req.user.qaSessionId);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -17,7 +17,7 @@ const toggleCommentLike = async (req, res, next) => {
   try {
     const comment_id = Number(req.params.comment_id);
     const user_id = req.user.userId;
-    const result = await interactionService.toggleCommentLike(user_id, comment_id);
+    const result = await interactionService.toggleCommentLike(user_id, comment_id, req.user.qaSessionId);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -29,7 +29,7 @@ const toggleBookmark = async (req, res, next) => {
   try {
     const post_id = Number(req.params.post_id);
     const user_id = req.user.userId;
-    const result = await interactionService.toggleBookmark(user_id, post_id);
+    const result = await interactionService.toggleBookmark(user_id, post_id, req.user.qaSessionId);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
@@ -41,7 +41,7 @@ const recordPostView = async (req, res, next) => {
   try {
     const post_id = Number(req.params.post_id);
     const user_id = req.user.userId;
-    await interactionService.recordPostView(user_id, post_id);
+    await interactionService.recordPostView(user_id, post_id, req.user.qaSessionId);
     res.status(200).json({ success: true });
   } catch (err) {
     next(err);

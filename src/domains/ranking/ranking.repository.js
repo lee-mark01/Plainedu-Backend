@@ -1,6 +1,7 @@
 // 랭킹 표시용 SQL — 점수 자체는 account.valuation이 write-back한 VirtualAccounts를 읽고,
 // ActiveDays는 Attendances(user 도메인, 시즌 범위 무관 누적 테이블)를 시즌 기간으로 직접 필터링해 센다.
 const pool = require('../../config/db');
+const { appendQaScope } = require('../qa/qa.scope');
 
 // 시즌 기간 내 출석일 수 — ActiveDays = 출석일 
 // 미래 구간은 세지 않도록 종료 경계를 min(오늘, SeasonEnd)로 제한.
@@ -185,7 +186,13 @@ const upsertDailyRankings = async (rows, executor = pool) => {
 // 라이브 ZSET이 아니라 DailyRankings를 읽는다.
 // 모수는 같은 (시즌·대상종류·리그그룹)의 그날 행 수 — 순위가 그룹 내에서 매겨지기 때문.
 // school_group은 과거 통합 시절 행이 NULL일 수 있어 <=>(NULL-safe)로 비교한다.
-const findRankHistory = async (seasonId, targetType, targetId, schoolGroup, executor = pool) => {
+const findRankHistory = async (seasonId, targetType, targetId, schoolGroup, qaSessionId = null, executor = pool) => {
+  const innerScope = [];
+  const innerScopeParams = [];
+  appendQaScope({ conditions: innerScope, params: innerScopeParams, alias: 'DailyRankings', qaSessionId });
+  const outerScope = [];
+  const outerScopeParams = [];
+  appendQaScope({ conditions: outerScope, params: outerScopeParams, alias: 'm', qaSessionId });
   const [rows] = await executor.query(
     `SELECT DATE_FORMAT(m.rank_date, '%Y-%m-%d') AS date,
             m.rank_position, m.return_rate, m.final_score, t.total
@@ -194,11 +201,13 @@ const findRankHistory = async (seasonId, targetType, targetId, schoolGroup, exec
        SELECT rank_date, COUNT(*) AS total
        FROM DailyRankings
        WHERE season_id = ? AND target_type = ? AND school_group <=> ?
+         AND ${innerScope.join(' AND ')}
        GROUP BY rank_date
      ) t ON t.rank_date = m.rank_date
      WHERE m.season_id = ? AND m.target_type = ? AND m.target_id = ?
+       AND ${outerScope.join(' AND ')}
      ORDER BY m.rank_date`,
-    [seasonId, targetType, schoolGroup ?? null, seasonId, targetType, targetId]
+    [seasonId, targetType, schoolGroup ?? null, ...innerScopeParams, seasonId, targetType, targetId, ...outerScopeParams]
   );
   return rows;
 };

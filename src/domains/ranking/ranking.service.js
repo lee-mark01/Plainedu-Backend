@@ -648,7 +648,7 @@ const HISTORY_TARGET_TYPE = {
 
 // GET /api/ranking/me/history — 순위 추이 그래프 (지난 시즌 포함).
 // season_id 생략 시 현재 시즌. 대상이 없으면(무학교·무소속팀) 빈 items로 200.
-const getMyRankHistory = async (userId, { seasonId = null, scope = 'individual' } = {}) => {
+const getMyRankHistory = async (userId, { seasonId = null, scope = 'individual', qaSessionId = null } = {}) => {
   const season = seasonId
     ? await accountService.getSeasonById(seasonId)
     : await accountService.getOrCreateActiveSeason();
@@ -681,7 +681,8 @@ const getMyRankHistory = async (userId, { seasonId = null, scope = 'individual' 
     season.id,
     HISTORY_TARGET_TYPE[scope],
     targetId,
-    group
+    group,
+    qaSessionId
   );
 
   return {

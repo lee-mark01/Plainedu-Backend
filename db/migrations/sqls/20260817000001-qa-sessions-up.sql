@@ -14,3 +14,21 @@ ALTER TABLE Users
   ADD KEY idx_users_qa_session (qa_session_id),
   ADD CONSTRAINT fk_users_qa_session
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE Teams
+  ADD COLUMN qa_session_id CHAR(36) NULL,
+  ADD KEY idx_teams_qa_session (qa_session_id),
+  ADD CONSTRAINT fk_teams_qa_session
+    FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE CommunityPosts
+  ADD COLUMN qa_session_id CHAR(36) NULL,
+  ADD KEY idx_community_posts_qa_session (qa_session_id),
+  ADD CONSTRAINT fk_community_posts_qa_session
+    FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE DailyRankings
+  ADD COLUMN qa_session_id CHAR(36) NULL,
+  ADD KEY idx_daily_rankings_qa_session (qa_session_id),
+  ADD CONSTRAINT fk_daily_rankings_qa_session
+    FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
