@@ -49,8 +49,12 @@ const createQaSessionService = ({
       const customToken = await firebaseAdmin.createCustomToken(firebaseUid, { qaSessionId });
       return { customToken, expiresAt: expiresAt.toISOString() };
     } catch (error) {
-      await repository.deleteSession(qaSessionId).catch(() => {});
-      await firebaseAdmin.deleteQaIdentity(firebaseUid).catch(() => {});
+      try {
+        await firebaseAdmin.deleteQaIdentity(firebaseUid);
+        await repository.deleteSession(qaSessionId);
+      } catch (_cleanupError) {
+        await repository.expireSession(qaSessionId, now).catch(() => {});
+      }
       throw error;
     }
   };

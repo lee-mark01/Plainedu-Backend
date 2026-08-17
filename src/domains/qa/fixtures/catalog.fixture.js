@@ -52,7 +52,8 @@ const ensureCatalog = async (executor, { now }) => {
   }
 
   let [topic] = await rows(executor, 'SELECT id FROM Topics WHERE title = ? LIMIT 1', ['QA 투자 기초']);
-  if (!topic) topic = { id: await insert(executor, 'INSERT INTO Topics (title, sort_order) VALUES (?, ?)', ['QA 투자 기초', 900]) };
+  if (!topic) topic = { id: await insert(executor, 'INSERT INTO Topics (title, level_number, sort_order) VALUES (?, ?, ?)', ['QA 투자 기초', 1, 900]) };
+  else await executor.query('UPDATE Topics SET level_number = ? WHERE id = ?', [1, topic.id]);
 
   let [shortform] = await rows(
     executor,

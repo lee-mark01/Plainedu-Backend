@@ -29,7 +29,7 @@ const stubs = {
   },
   '../config/marketHours': { isMarketOpen: () => state.marketOpen, getEtDateString: () => '2026-07-28' },
   '../config/redis': { get: async () => state.credits },
-  '../config/qa': { getQaConfig: () => ({ enabled: false }) },
+  '../config/qa': { getQaConfig: () => ({ enabled: false, isQaDeployment: false }) },
   '../domains/account/account.service': {
     getActiveSeason: async () => state.season,
     getHeldStockCodes: (seasonId) => state.heldCodes(seasonId),
@@ -60,8 +60,9 @@ const heldTick = capturedByFnName.get('heldTick').fn;
 const snapshot = capturedByFnName.get('snapshotTick');
 
 test('QA preview disables global ranking writes and uses session fixtures only', () => {
-  assert.equal(scheduler.shouldStartRankingScheduler({ enabled: true }), false);
-  assert.equal(scheduler.shouldStartRankingScheduler({ enabled: false }), true);
+  assert.equal(scheduler.shouldStartRankingScheduler({ enabled: true, isQaDeployment: true }), false);
+  assert.equal(scheduler.shouldStartRankingScheduler({ enabled: false, isQaDeployment: true }), false);
+  assert.equal(scheduler.shouldStartRankingScheduler({ enabled: false, isQaDeployment: false }), true);
 });
 
 // console 캡처 헬퍼

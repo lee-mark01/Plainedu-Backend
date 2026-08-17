@@ -125,7 +125,7 @@ const snapshotTick = async () => {
   }
 };
 
-const shouldStartRankingScheduler = (config) => !config.enabled;
+const shouldStartRankingScheduler = (config) => !config.isQaDeployment;
 
 const start = () => {
   if (!shouldStartRankingScheduler(getQaConfig()) || task) return; // QA preview는 세션별 고정 fixture만 사용

@@ -11,8 +11,8 @@ test('cleanup keeps running after QA login is disabled when cleanup credentials 
 test('cleanup claims expired sessions, removes Firebase identities, then deletes sessions', async () => {
   const calls = [];
   const repository = {
-    claimExpiredSessions: async ({ limit, staleBefore }) => {
-      calls.push(['claim', limit, staleBefore]);
+    claimExpiredSessions: async ({ limit, createdBefore, staleBefore }) => {
+      calls.push(['claim', limit, createdBefore, staleBefore]);
       return [{ id: 'session-1', firebaseUid: 'qa_session-1' }];
     },
     deleteSession: async (id) => calls.push(['delete', id]),
@@ -29,7 +29,8 @@ test('cleanup claims expired sessions, removes Firebase identities, then deletes
   assert.deepEqual(result, { claimed: 1, deleted: 1, failed: 0 });
   assert.deepEqual(calls.map((call) => call[0]), ['claim', 'firebase', 'delete']);
   assert.equal(calls[0][1], 50);
-  assert.equal(calls[0][2].toISOString(), '2026-08-16T23:45:00.000Z');
+  assert.equal(calls[0][2].toISOString(), '2026-08-16T00:00:00.000Z');
+  assert.equal(calls[0][3].toISOString(), '2026-08-16T23:45:00.000Z');
 });
 
 test('cleanup releases the claim when external identity deletion fails so it can retry', async () => {

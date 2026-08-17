@@ -7,7 +7,7 @@ const createQaCleanupJob = ({ repository, firebaseAdmin, clock = () => new Date(
   async runOnce() {
     const now = clock();
     const sessions = await repository.claimExpiredSessions({
-      expiresBefore: new Date(now.getTime() - retentionHours * 3_600_000),
+      createdBefore: new Date(now.getTime() - retentionHours * 3_600_000),
       staleBefore: new Date(now.getTime() - 15 * 60_000),
       limit: 50,
     });
@@ -21,7 +21,7 @@ const createQaCleanupJob = ({ repository, firebaseAdmin, clock = () => new Date(
       } catch (error) {
         failed += 1;
         await repository.releaseCleanupClaim(session.id);
-        logger.error('[qaSessionCleanup] cleanup failed', { sessionId: session.id, error: error.message });
+        logger.error('[qaSessionCleanup] cleanup failed', { error: error.message });
       }
     }
     const result = { claimed: sessions.length, deleted, failed };

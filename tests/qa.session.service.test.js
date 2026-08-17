@@ -5,12 +5,13 @@ const { createQaSessionService } = require('../src/domains/qa/qa.service');
 
 const fixedNow = new Date('2026-08-17T01:00:00.000Z');
 
-const createHarness = ({ enabled = true, pinValid = true, seedError = null, firebaseError = null } = {}) => {
+const createHarness = ({ enabled = true, pinValid = true, seedError = null, firebaseError = null, firebaseDeleteError = null } = {}) => {
   const calls = [];
   const repository = {
     createSession: async (_executor, value) => calls.push(['session', value]),
     setRootUser: async (_executor, value) => calls.push(['root', value]),
     deleteSession: async (id) => calls.push(['delete', id]),
+    expireSession: async (id, at) => calls.push(['expire', id, at]),
   };
   const firebaseAdmin = {
     ensureQaUser: async (value) => {
@@ -21,7 +22,10 @@ const createHarness = ({ enabled = true, pinValid = true, seedError = null, fire
       calls.push(['custom-token', uid, claims]);
       return 'firebase-custom-token';
     },
-    deleteQaIdentity: async (uid) => calls.push(['firebase-delete', uid]),
+    deleteQaIdentity: async (uid) => {
+      calls.push(['firebase-delete', uid]);
+      if (firebaseDeleteError) throw firebaseDeleteError;
+    },
   };
   const seedFixtures = async (_executor, value) => {
     calls.push(['seed', value]);
@@ -123,4 +127,18 @@ test('Firebase provisioning failure compensates the committed QA session', async
   await assert.rejects(service.createSession('482913', {}), /firebase failed/);
   assert.equal(calls.some(([name, id]) => name === 'delete' && id === '11111111-2222-4333-8444-555555555555'), true);
   assert.equal(calls.some(([name, uid]) => name === 'firebase-delete' && uid === 'qa_11111111-2222-4333-8444-555555555555'), true);
+});
+
+test('failed external compensation leaves an immediately cleanup-eligible session', async () => {
+  const { calls, service } = createHarness({
+    firebaseError: new Error('firebase failed'),
+    firebaseDeleteError: new Error('cleanup failed'),
+  });
+  await assert.rejects(service.createSession('482913', {}), /firebase failed/);
+  assert.equal(calls.some(([name]) => name === 'delete'), false);
+  assert.deepEqual(calls.find(([name]) => name === 'expire'), [
+    'expire',
+    '11111111-2222-4333-8444-555555555555',
+    fixedNow,
+  ]);
 });

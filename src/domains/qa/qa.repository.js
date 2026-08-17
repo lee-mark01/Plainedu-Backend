@@ -31,18 +31,25 @@ const createQaRepository = (defaultExecutor = pool) => ({
     await defaultExecutor.query('DELETE FROM QaSessions WHERE id = ?', [sessionId]);
   },
 
-  async claimExpiredSessions({ expiresBefore, staleBefore, limit = 50 }) {
+  async expireSession(sessionId, expiredAt) {
+    await defaultExecutor.query(
+      'UPDATE QaSessions SET expires_at = ?, cleanup_required = TRUE, cleanup_started_at = NULL WHERE id = ?',
+      [expiredAt, sessionId]
+    );
+  },
+
+  async claimExpiredSessions({ createdBefore, staleBefore, limit = 50 }) {
     const connection = await defaultExecutor.getConnection();
     try {
       await connection.beginTransaction();
       const [rows] = await connection.query(
         `SELECT id, firebase_uid AS firebaseUid
            FROM QaSessions
-          WHERE expires_at <= ?
+          WHERE ((created_at <= ? AND expires_at <= CURRENT_TIMESTAMP) OR cleanup_required = TRUE)
             AND (cleanup_started_at IS NULL OR cleanup_started_at <= ?)
           ORDER BY expires_at ASC
           LIMIT ? FOR UPDATE SKIP LOCKED`,
-        [expiresBefore, staleBefore, limit]
+        [createdBefore, staleBefore, limit]
       );
       if (rows.length) {
         await connection.query(

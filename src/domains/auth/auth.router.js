@@ -16,7 +16,6 @@ const loginLimit = rateLimit('login', 60, 300);
 router.post(
   '/qa-session',
   requireQaEnabled,
-  rateLimit('qa-login', 5, 900),
   validate(qaSessionSchema),
   qaController.createSession
 );
