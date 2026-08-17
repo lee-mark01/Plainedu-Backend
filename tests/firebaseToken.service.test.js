@@ -13,6 +13,7 @@ const decodedToken = {
 const createDependencies = ({ existingByFirebase = null, existingByEmail = null } = {}) => {
   const users = [];
   const savedTokens = [];
+  const accessPayloads = [];
   const repository = {
     findUserBySnsId: async (provider, snsId) =>
       provider === 'firebase' && snsId === decodedToken.uid ? existingByFirebase : null,
@@ -33,11 +34,16 @@ const createDependencies = ({ existingByFirebase = null, existingByEmail = null 
       getOrCreateIndividualAccount: async (userId) => ({ id: 7, user_id: userId }),
     },
     tokenTools: {
-      signAccessToken: ({ userId, role }) => `access:${userId}:${role}`,
+      signAccessToken: (payload) => {
+        accessPayloads.push(payload);
+        return `access:${payload.userId}:${payload.role}`;
+      },
       generateRefreshToken: () => 'refresh-token',
       hashToken: (token) => `hash:${token}`,
     },
     randomUUID: () => 'family-id',
+    clock: () => new Date('2026-08-17T01:00:00.000Z'),
+    accessPayloads,
   };
 };
 
@@ -84,5 +90,49 @@ test('이메일이 없는 Firebase 토큰은 계정 생성 전에 거부한다',
     (error) => error.status === 400 && error.code === 'FIREBASE_EMAIL_REQUIRED'
   );
   assert.deepEqual(deps.users, []);
+  assert.deepEqual(deps.savedTokens, []);
+});
+
+test('QA Firebase claim is preserved in access tokens and caps refresh expiry', async () => {
+  const qaUser = {
+    id: 77,
+    email: 'qa@qa.invalid',
+    nickname: 'QA 테스터',
+    role: 'USER',
+    qa_session_id: 'qa-session',
+    qa_expires_at: new Date('2026-08-17T09:00:00.000Z'),
+  };
+  const deps = createDependencies({ existingByFirebase: qaUser });
+  const service = createFirebaseTokenService(deps);
+
+  await service.exchange(
+    { ...decodedToken, uid: 'firebase-uid-123', email: qaUser.email, qaSessionId: 'qa-session' },
+    { ipAddress: '127.0.0.1', userAgent: 'test' }
+  );
+
+  assert.deepEqual(deps.accessPayloads, [{ userId: 77, role: 'USER', qaSessionId: 'qa-session' }]);
+  assert.deepEqual(deps.savedTokens[0].expiresAt, new Date('2026-08-17T09:00:00.000Z'));
+  assert.deepEqual(deps.savedTokens[0].absoluteExpiresAt, new Date('2026-08-17T09:00:00.000Z'));
+});
+
+test('QA Firebase claim mismatch is rejected before tokens are issued', async () => {
+  const qaUser = {
+    id: 77,
+    email: 'qa@qa.invalid',
+    nickname: 'QA 테스터',
+    role: 'USER',
+    qa_session_id: 'stored-session',
+    qa_expires_at: new Date('2026-08-17T09:00:00.000Z'),
+  };
+  const deps = createDependencies({ existingByFirebase: qaUser });
+  const service = createFirebaseTokenService(deps);
+
+  await assert.rejects(
+    service.exchange(
+      { ...decodedToken, email: qaUser.email, qaSessionId: 'different-session' },
+      { ipAddress: '127.0.0.1', userAgent: 'test' }
+    ),
+    (error) => error.status === 401 && error.code === 'QA_SESSION_INVALID'
+  );
   assert.deepEqual(deps.savedTokens, []);
 });

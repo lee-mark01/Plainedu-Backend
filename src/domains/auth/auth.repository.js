@@ -2,7 +2,11 @@ const pool = require('../../config/db');
 
 const findUserBySnsId = async (provider, snsId) => {
   const [rows] = await pool.query(
-    'SELECT id, email, nickname, role, provider, sns_id FROM Users WHERE provider = ? AND sns_id = ?',
+    `SELECT u.id, u.email, u.nickname, u.role, u.provider, u.sns_id, u.qa_session_id,
+            qs.expires_at AS qa_expires_at
+       FROM Users u
+       LEFT JOIN QaSessions qs ON qs.id = u.qa_session_id
+      WHERE u.provider = ? AND u.sns_id = ?`,
     [provider, snsId]
   );
   return rows[0] || null;
@@ -10,7 +14,11 @@ const findUserBySnsId = async (provider, snsId) => {
 
 const findUserByEmail = async (email) => {
   const [rows] = await pool.query(
-    'SELECT id, email, nickname, role, provider, sns_id FROM Users WHERE email = ?',
+    `SELECT u.id, u.email, u.nickname, u.role, u.provider, u.sns_id, u.qa_session_id,
+            qs.expires_at AS qa_expires_at
+       FROM Users u
+       LEFT JOIN QaSessions qs ON qs.id = u.qa_session_id
+      WHERE u.email = ?`,
     [email]
   );
   return rows[0] || null;
@@ -26,7 +34,11 @@ const createOauthUser = async ({ email, nickname, provider, snsId }) => {
 
 const findUserById = async (id) => {
   const [rows] = await pool.query(
-    'SELECT id, email, nickname, role FROM Users WHERE id = ?',
+    `SELECT u.id, u.email, u.nickname, u.role, u.qa_session_id,
+            qs.expires_at AS qa_expires_at
+       FROM Users u
+       LEFT JOIN QaSessions qs ON qs.id = u.qa_session_id
+      WHERE u.id = ?`,
     [id]
   );
   return rows[0] || null;

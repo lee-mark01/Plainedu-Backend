@@ -9,6 +9,7 @@ const createFirebaseTokenService = ({
   accountService,
   tokenTools,
   randomUUID = crypto.randomUUID,
+  clock = () => new Date(),
 }) => {
   const exchange = async (decodedToken, { ipAddress, userAgent }) => {
     const snsId = decodedToken?.uid;
@@ -40,11 +41,27 @@ const createFirebaseTokenService = ({
       isNew = true;
     }
 
+    const qaSessionId = decodedToken?.qaSessionId;
+    const qaExpiry = user.qa_session_id && user.qa_expires_at
+      ? new Date(user.qa_expires_at)
+      : null;
+    const nowDate = clock();
+    if (
+      qaSessionId !== (user.qa_session_id || undefined)
+      || (user.qa_session_id && (!qaExpiry || qaExpiry <= nowDate))
+    ) {
+      throw new AppError('유효하지 않은 QA 세션입니다.', 401, 'QA_SESSION_INVALID');
+    }
+
     await accountService.getOrCreateIndividualAccount(user.id);
 
-    const accessToken = tokenTools.signAccessToken({ userId: user.id, role: user.role });
+    const payload = { userId: user.id, role: user.role };
+    if (user.qa_session_id) payload.qaSessionId = user.qa_session_id;
+    const accessToken = tokenTools.signAccessToken(payload);
     const refreshToken = tokenTools.generateRefreshToken();
-    const now = Date.now();
+    const now = nowDate.getTime();
+    const slidingExpiry = new Date(now + SLIDING_TTL_MS);
+    const absoluteExpiry = new Date(now + ABSOLUTE_TTL_MS);
 
     await repository.saveRefreshToken({
       userId: user.id,
@@ -52,8 +69,8 @@ const createFirebaseTokenService = ({
       familyId: randomUUID(),
       ipAddress,
       userAgent,
-      expiresAt: new Date(now + SLIDING_TTL_MS),
-      absoluteExpiresAt: new Date(now + ABSOLUTE_TTL_MS),
+      expiresAt: qaExpiry && qaExpiry < slidingExpiry ? qaExpiry : slidingExpiry,
+      absoluteExpiresAt: qaExpiry && qaExpiry < absoluteExpiry ? qaExpiry : absoluteExpiry,
     });
 
     return { accessToken, refreshToken, user, isNew };

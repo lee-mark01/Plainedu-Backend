@@ -3,6 +3,7 @@ const authRepository = require('./auth.repository');
 const AppError = require('../../errors/AppError');
 const { signAccessToken, generateRefreshToken, hashToken } = require('../../utils/jwt');
 const accountService = require('../account/account.service');
+const { createRefreshService } = require('./refresh.service');
 
 const providers = {
   kakao: require('./providers/kakao'),
@@ -66,44 +67,10 @@ const oauthLogin = async (provider, code, { ipAddress, userAgent, state }) => {
   return { accessToken, refreshToken, user, isNew };
 };
 
-const refresh = async (rawRefreshToken, { ipAddress, userAgent }) => {
-  if (!rawRefreshToken) throw new AppError('리프레시 토큰이 없습니다.', 400);
-
-  const tokenHash = hashToken(rawRefreshToken);
-  const stored = await authRepository.findRefreshToken(tokenHash);
-
-  if (!stored) throw new AppError('유효하지 않은 리프레시 토큰입니다.', 401, 'REFRESH_TOKEN_INVALID');
-
-  // Reuse Detection: 이미 소비된 토큰이 재사용됨 = 탈취 의심 → 계보 전체 삭제
-  if (stored.used) {
-    await authRepository.deleteRefreshTokenFamily(stored.family_id);
-    throw new AppError('비정상적인 토큰 사용이 감지되었습니다. 다시 로그인해주세요.', 401, 'TOKEN_REUSE_DETECTED');
-  }
-
-  if (new Date(stored.expires_at) < new Date()) {
-    await authRepository.deleteRefreshTokenFamily(stored.family_id);
-    throw new AppError('리프레시 토큰이 만료되었습니다.', 401, 'REFRESH_TOKEN_EXPIRED');
-  }
-
-  const user = await authRepository.findUserById(stored.user_id);
-  if (!user) throw new AppError('존재하지 않는 사용자입니다.', 401);
-
-  const accessToken = signAccessToken({ userId: user.id, role: user.role });
-  const newRefreshToken = generateRefreshToken();
-
-  await authRepository.rotateRefreshToken({
-    oldHash: tokenHash,
-    userId: user.id,
-    newHash: hashToken(newRefreshToken),
-    familyId: stored.family_id,
-    ipAddress,
-    userAgent,
-    expiresAt: new Date(Date.now() + SLIDING_TTL_MS),  // 슬라이딩: 7일 연장
-    absoluteExpiresAt: stored.absolute_expires_at,      // 절대 만료: 최초 발급 기준 고정
-  });
-
-  return { accessToken, refreshToken: newRefreshToken };
-};
+const refresh = createRefreshService({
+  repository: authRepository,
+  tokenTools: { signAccessToken, generateRefreshToken, hashToken },
+}).refresh;
 
 const logout = async (rawRefreshToken) => {
   if (!rawRefreshToken) throw new AppError('리프레시 토큰이 없습니다.', 400);
