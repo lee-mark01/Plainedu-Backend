@@ -7,3 +7,4 @@ spikes/**/.env
 .claude_cache_*/**     
 erd.md
 모델포트폴리오 참고사진/
+.worktrees/
