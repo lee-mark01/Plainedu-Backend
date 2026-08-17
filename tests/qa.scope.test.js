@@ -61,4 +61,6 @@ test('follow reads and writes validate the target against the verified session s
   assert.match(router, /follow\/counts', optionalAuthenticate/);
   assert.match(router, /followers', optionalAuthenticate/);
   assert.match(router, /followings', optionalAuthenticate/);
+  const postService = fs.readFileSync('src/domains/community/post.service.js', 'utf8');
+  assert.match(postService, /findFollowers\(user_id, qaSessionId\)/);
 });

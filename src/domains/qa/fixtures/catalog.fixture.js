@@ -68,7 +68,7 @@ const ensureCatalog = async (executor, { now }) => {
     ) };
   }
 
-  let [quiz] = await rows(executor, 'SELECT id FROM Quizzes WHERE topic_id = ? ORDER BY sort_order LIMIT 1', [topic.id]);
+  let [quiz] = await rows(executor, 'SELECT id FROM Quizzes WHERE topic_id = ? AND sort_order = 1 LIMIT 1', [topic.id]);
   if (!quiz) {
     quiz = { id: await insert(
       executor,
@@ -78,7 +78,28 @@ const ensureCatalog = async (executor, { now }) => {
     ) };
   }
 
-  return { schoolId: school.id, seasonId: season.id, topicId: topic.id, shortformId: shortform.id, quizId: quiz.id };
+  let [incompleteQuiz] = await rows(
+    executor,
+    'SELECT id FROM Quizzes WHERE topic_id = ? AND sort_order = 2 LIMIT 1',
+    [topic.id]
+  );
+  if (!incompleteQuiz) {
+    incompleteQuiz = { id: await insert(
+      executor,
+      `INSERT INTO Quizzes (topic_id, type, difficulty, question_data, answer_data, sort_order)
+       VALUES (?, 'CHOICE', 'BEGINNER', ?, ?, 2)`,
+      [topic.id, JSON.stringify({ question: '투자 위험을 줄이는 방법은?', options: ['여러 자산에 분산', '한 종목에 집중'] }), JSON.stringify({ answer: 0 })]
+    ) };
+  }
+
+  return {
+    schoolId: school.id,
+    seasonId: season.id,
+    topicId: topic.id,
+    shortformId: shortform.id,
+    quizId: quiz.id,
+    incompleteQuizId: incompleteQuiz.id,
+  };
 };
 
 module.exports = { ensureCatalog };

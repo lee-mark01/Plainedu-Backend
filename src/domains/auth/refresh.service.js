@@ -36,7 +36,7 @@ const createRefreshService = ({ repository, tokenTools, clock = () => new Date()
 
     const payload = { userId: user.id, role: user.role };
     if (user.qa_session_id) payload.qaSessionId = user.qa_session_id;
-    const accessToken = tokenTools.signAccessToken(payload);
+    const accessToken = tokenTools.signAccessToken(payload, qaExpiry);
     const newRefreshToken = tokenTools.generateRefreshToken();
     const slidingExpiry = new Date(now.getTime() + SLIDING_TTL_MS);
     const expiresAt = qaExpiry ? earlierDate(slidingExpiry, qaExpiry) : slidingExpiry;

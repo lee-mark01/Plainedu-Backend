@@ -57,7 +57,7 @@ const createFirebaseTokenService = ({
 
     const payload = { userId: user.id, role: user.role };
     if (user.qa_session_id) payload.qaSessionId = user.qa_session_id;
-    const accessToken = tokenTools.signAccessToken(payload);
+    const accessToken = tokenTools.signAccessToken(payload, qaExpiry);
     const refreshToken = tokenTools.generateRefreshToken();
     const now = nowDate.getTime();
     const slidingExpiry = new Date(now + SLIDING_TTL_MS);

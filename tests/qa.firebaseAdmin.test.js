@@ -62,6 +62,16 @@ test('QA Firebase cleanup ignores already deleted identities', async () => {
   await assert.doesNotReject(firebase.deleteQaIdentity('qa_missing'));
 });
 
+test('QA Firebase cleanup propagates Firestore failures so the session can retry', async () => {
+  const firebase = createQaFirebaseAdmin({
+    auth: { deleteUser: async () => {} },
+    firestore: {
+      collection: () => ({ doc: () => ({ delete: async () => { throw new Error('firestore unavailable'); } }) }),
+    },
+  });
+  await assert.rejects(firebase.deleteQaIdentity('qa_uid'), /firestore unavailable/);
+});
+
 test('QA Firebase provisioning reuses an existing temporary user', async () => {
   let createCalls = 0;
   const auth = {

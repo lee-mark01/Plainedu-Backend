@@ -23,7 +23,7 @@ const daysBetween = (fromStr, toStr) => {
 const getIndividualLeaderboard = async (req, res, next) => {
   try {
     const { page, limit } = req.validated;
-    const data = await rankingService.getIndividualLeaderboard(req.user.userId, { page, limit });
+    const data = await rankingService.getIndividualLeaderboard(req.user.userId, { page, limit, qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -35,7 +35,7 @@ const getIndividualLeaderboard = async (req, res, next) => {
 const getTeamLeaderboard = async (req, res, next) => {
   try {
     const { page, limit, school_id: schoolId } = req.validated;
-    const data = await rankingService.getTeamLeaderboard(req.user.userId, { page, limit, schoolId });
+    const data = await rankingService.getTeamLeaderboard(req.user.userId, { page, limit, schoolId, qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -46,7 +46,7 @@ const getTeamLeaderboard = async (req, res, next) => {
 const getSchoolLeaderboard = async (req, res, next) => {
   try {
     const { mode, page, limit } = req.validated;
-    const data = await rankingService.getSchoolLeaderboard(req.user.userId, { mode, page, limit });
+    const data = await rankingService.getSchoolLeaderboard(req.user.userId, { mode, page, limit, qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -56,7 +56,7 @@ const getSchoolLeaderboard = async (req, res, next) => {
 // GET /api/ranking/me — 개인 + 팀 + 소속 2종 순위 요약 (무소속이면 team null, 학교 미설정이면 소속 null)
 const getMyRanking = async (req, res, next) => {
   try {
-    const data = await rankingService.getMyRankingSummary(req.user.userId);
+    const data = await rankingService.getMyRankingSummary(req.user.userId, { qaSessionId: req.user.qaSessionId });
     res.json({ success: true, data });
   } catch (err) {
     next(err);

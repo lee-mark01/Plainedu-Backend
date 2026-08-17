@@ -23,7 +23,7 @@ const createQaFirebaseAdmin = ({ auth, firestore }) => ({
   },
 
   async deleteQaIdentity(uid) {
-    await firestore.collection('users').doc(uid).delete().catch(() => {});
+    await firestore.collection('users').doc(uid).delete();
     try {
       await auth.deleteUser(uid);
     } catch (error) {

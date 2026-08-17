@@ -20,23 +20,25 @@ const createHarness = ({ user, storedOverrides = {} }) => {
     deleteRefreshTokenFamily: async (id) => calls.push(['delete-family', id]),
   };
   const accessPayloads = [];
+  const accessExpiries = [];
   const service = createRefreshService({
     repository,
     tokenTools: {
       hashToken: (value) => `hash:${value}`,
-      signAccessToken: (payload) => {
+      signAccessToken: (payload, expiresAt) => {
         accessPayloads.push(payload);
+        accessExpiries.push(expiresAt);
         return 'new-access';
       },
       generateRefreshToken: () => 'new-refresh',
     },
     clock: () => new Date('2026-08-17T01:00:00.000Z'),
   });
-  return { accessPayloads, calls, service };
+  return { accessPayloads, accessExpiries, calls, service };
 };
 
 test('refresh preserves QA scope and cannot outlive the QA session', async () => {
-  const { accessPayloads, calls, service } = createHarness({
+  const { accessPayloads, accessExpiries, calls, service } = createHarness({
     user: {
       id: 77,
       role: 'USER',
@@ -49,6 +51,7 @@ test('refresh preserves QA scope and cannot outlive the QA session', async () =>
 
   assert.deepEqual(result, { accessToken: 'new-access', refreshToken: 'new-refresh' });
   assert.deepEqual(accessPayloads, [{ userId: 77, role: 'USER', qaSessionId: 'qa-session' }]);
+  assert.deepEqual(accessExpiries, [new Date('2026-08-17T09:00:00.000Z')]);
   assert.deepEqual(calls[0][1].expiresAt, new Date('2026-08-17T09:00:00.000Z'));
   assert.deepEqual(calls[0][1].absoluteExpiresAt, new Date('2026-08-17T09:00:00.000Z'));
 });
@@ -71,13 +74,14 @@ test('refresh rejects an expired QA session and revokes its token family', async
 });
 
 test('ordinary users retain the existing seven-day sliding refresh behavior', async () => {
-  const { accessPayloads, calls, service } = createHarness({
+  const { accessPayloads, accessExpiries, calls, service } = createHarness({
     user: { id: 12, role: 'USER', qa_session_id: null, qa_expires_at: null },
   });
 
   await service.refresh('old-refresh', {});
 
   assert.deepEqual(accessPayloads, [{ userId: 12, role: 'USER' }]);
+  assert.deepEqual(accessExpiries, [null]);
   assert.deepEqual(calls[0][1].expiresAt, new Date('2026-08-24T01:00:00.000Z'));
   assert.deepEqual(calls[0][1].absoluteExpiresAt, new Date('2026-11-01T00:00:00.000Z'));
 });

@@ -11,6 +11,7 @@ const redis = require('../config/redis');
 const accountService = require('../domains/account/account.service');
 const rankingService = require('../domains/ranking/ranking.service');
 const subscriptions = require('../marketData/subscriptions');
+const { getQaConfig } = require('../config/qa');
 
 let task = null;
 let snapshotTask = null;
@@ -124,8 +125,10 @@ const snapshotTick = async () => {
   }
 };
 
+const shouldStartRankingScheduler = (config) => !config.enabled;
+
 const start = () => {
-  if (task) return; // 중복 start 방지
+  if (!shouldStartRankingScheduler(getQaConfig()) || task) return; // QA preview는 세션별 고정 fixture만 사용
   task = cron.schedule('* * * * *', tick);
   heldTask = cron.schedule('* * * * *', heldTick); // tick과 동일 주기지만 완전히 별개의 cron.schedule 호출
   snapshotTask = cron.schedule('5 16 * * 1-5', snapshotTick, { timezone: 'America/New_York' });
@@ -148,4 +151,4 @@ const stop = () => {
   }
 };
 
-module.exports = { start, stop };
+module.exports = { shouldStartRankingScheduler, start, stop };

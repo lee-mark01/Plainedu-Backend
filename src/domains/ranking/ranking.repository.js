@@ -232,6 +232,81 @@ const findPrevRanks = async (seasonId, targetType, targetIds, beforeDate, execut
   return map;
 };
 
+const findQaRankings = async ({
+  qaSessionId,
+  seasonId,
+  targetType,
+  schoolGroup,
+  page = 1,
+  limit = 20,
+  targetId = null,
+  schoolId = null,
+}, executor = pool) => {
+  const conditions = [
+    'dr.qa_session_id = ?',
+    'dr.season_id = ?',
+    'dr.target_type = ?',
+    'dr.school_group <=> ?',
+    `dr.rank_date = (
+      SELECT MAX(latest.rank_date)
+      FROM DailyRankings latest
+      WHERE latest.qa_session_id = ?
+        AND latest.season_id = ?
+        AND latest.target_type = ?
+        AND latest.school_group <=> ?
+    )`,
+  ];
+  const params = [
+    qaSessionId,
+    seasonId,
+    targetType,
+    schoolGroup ?? null,
+    qaSessionId,
+    seasonId,
+    targetType,
+    schoolGroup ?? null,
+  ];
+  if (targetId != null) {
+    conditions.push('dr.target_id = ?');
+    params.push(targetId);
+  }
+  if (schoolId != null && targetType === 'TEAM') {
+    conditions.push('tm.school_id = ?');
+    params.push(schoolId);
+  }
+  const where = conditions.join(' AND ');
+  const [countRows, rows] = await Promise.all([
+    executor.query(
+      `SELECT COUNT(*) AS total
+         FROM DailyRankings dr
+         LEFT JOIN Teams tm ON dr.target_type = 'TEAM' AND tm.id = dr.target_id
+        WHERE ${where}`,
+      params
+    ).then(([result]) => result),
+    executor.query(
+      `SELECT dr.target_id, dr.rank_date, dr.rank_position, dr.return_rate,
+              dr.final_score, dr.participation_rate, dr.alignment_score,
+              u.nickname AS user_nickname,
+              us.school_name AS user_school_name,
+              tm.name AS team_name,
+              ts.school_name AS team_school_name,
+              os.school_name AS organization_name
+         FROM DailyRankings dr
+         LEFT JOIN Users u ON dr.target_type = 'USER' AND u.id = dr.target_id
+         LEFT JOIN schools us ON us.id = u.school_id
+         LEFT JOIN Teams tm ON dr.target_type = 'TEAM' AND tm.id = dr.target_id
+         LEFT JOIN schools ts ON ts.id = tm.school_id
+         LEFT JOIN schools os
+           ON dr.target_type IN ('SCHOOL_INDIVIDUAL','SCHOOL_TEAM') AND os.id = dr.target_id
+        WHERE ${where}
+        ORDER BY dr.rank_position ASC, dr.target_id ASC
+        LIMIT ? OFFSET ?`,
+      [...params, limit, (page - 1) * limit]
+    ).then(([result]) => result),
+  ]);
+  return { total: Number(countRows[0]?.total ?? 0), rows };
+};
+
 module.exports = {
   findActiveDaysByUserIds,
   findTeamAvgActiveDays,
@@ -245,4 +320,5 @@ module.exports = {
   upsertDailyRankings,
   findRankHistory,
   findPrevRanks,
+  findQaRankings,
 };

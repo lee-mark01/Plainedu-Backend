@@ -15,7 +15,9 @@ const createExecutor = () => {
         if (/FROM Seasons/i.test(normalized)) return [[{ id: 20 }]];
         if (/FROM Topics/i.test(normalized)) return [[{ id: 30 }]];
         if (/FROM ShortForms/i.test(normalized)) return [[{ id: 31 }]];
-        if (/FROM Quizzes/i.test(normalized)) return [[{ id: 32 }]];
+        if (/FROM Quizzes/i.test(normalized)) {
+          return /sort_order = 2/i.test(normalized) ? [[]] : [[{ id: 32 }]];
+        }
         return [[]];
       }
       insertId += 1;
@@ -62,4 +64,18 @@ test('QA fixture identities and authored content are visibly synthetic and sessi
   assert.match(serializedParams, /QA/);
   assert.match(serializedParams, /qa\.invalid/);
   assert.match(serializedParams, /aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/);
+});
+
+test('learning fixture includes one completed quiz and one real incomplete quiz', async () => {
+  const { calls, executor } = createExecutor();
+  await seedQaFixtures(executor, {
+    qaSessionId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    firebaseUid: 'qa_learning',
+    now: new Date('2026-08-17T01:00:00.000Z'),
+  });
+
+  const quizInserts = calls.filter(([sql]) => /^INSERT INTO Quizzes\b/i.test(sql));
+  const quizLogs = calls.filter(([sql]) => /^INSERT INTO UserQuizLog\b/i.test(sql));
+  assert.equal(quizInserts.length, 1, 'the missing second quiz should be materialized');
+  assert.equal(quizLogs.length, 1, 'only the completed quiz should have a user log');
 });

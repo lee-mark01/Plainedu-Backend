@@ -31,9 +31,12 @@ const createQaCleanupJob = ({ repository, firebaseAdmin, clock = () => new Date(
 });
 
 let task;
+const shouldStartQaCleanup = (config, serviceAccountJson = process.env.QA_FIREBASE_SERVICE_ACCOUNT_JSON) =>
+  Boolean(config.firebaseProjectId && serviceAccountJson);
+
 const start = () => {
   const config = getQaConfig();
-  if (!config.enabled || task) return;
+  if (!shouldStartQaCleanup(config) || task) return;
   const job = createQaCleanupJob({
     repository: qaRepository,
     firebaseAdmin: getQaFirebaseAdmin(config),
@@ -49,4 +52,4 @@ const stop = () => {
   task = undefined;
 };
 
-module.exports = { createQaCleanupJob, start, stop };
+module.exports = { createQaCleanupJob, shouldStartQaCleanup, start, stop };

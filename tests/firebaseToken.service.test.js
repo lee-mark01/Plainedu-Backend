@@ -14,6 +14,7 @@ const createDependencies = ({ existingByFirebase = null, existingByEmail = null 
   const users = [];
   const savedTokens = [];
   const accessPayloads = [];
+  const accessExpiries = [];
   const repository = {
     findUserBySnsId: async (provider, snsId) =>
       provider === 'firebase' && snsId === decodedToken.uid ? existingByFirebase : null,
@@ -34,8 +35,9 @@ const createDependencies = ({ existingByFirebase = null, existingByEmail = null 
       getOrCreateIndividualAccount: async (userId) => ({ id: 7, user_id: userId }),
     },
     tokenTools: {
-      signAccessToken: (payload) => {
+      signAccessToken: (payload, expiresAt) => {
         accessPayloads.push(payload);
+        accessExpiries.push(expiresAt);
         return `access:${payload.userId}:${payload.role}`;
       },
       generateRefreshToken: () => 'refresh-token',
@@ -44,6 +46,7 @@ const createDependencies = ({ existingByFirebase = null, existingByEmail = null 
     randomUUID: () => 'family-id',
     clock: () => new Date('2026-08-17T01:00:00.000Z'),
     accessPayloads,
+    accessExpiries,
   };
 };
 
@@ -111,6 +114,7 @@ test('QA Firebase claim is preserved in access tokens and caps refresh expiry', 
   );
 
   assert.deepEqual(deps.accessPayloads, [{ userId: 77, role: 'USER', qaSessionId: 'qa-session' }]);
+  assert.deepEqual(deps.accessExpiries, [new Date('2026-08-17T09:00:00.000Z')]);
   assert.deepEqual(deps.savedTokens[0].expiresAt, new Date('2026-08-17T09:00:00.000Z'));
   assert.deepEqual(deps.savedTokens[0].absoluteExpiresAt, new Date('2026-08-17T09:00:00.000Z'));
 });

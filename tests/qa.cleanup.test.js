@@ -1,7 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createQaCleanupJob } = require('../src/jobs/qaSessionCleanup');
+const { createQaCleanupJob, shouldStartQaCleanup } = require('../src/jobs/qaSessionCleanup');
+
+test('cleanup keeps running after QA login is disabled when cleanup credentials remain', () => {
+  assert.equal(shouldStartQaCleanup({ enabled: false, firebaseProjectId: 'qa-project' }, '{"project_id":"qa-project"}'), true);
+  assert.equal(shouldStartQaCleanup({ enabled: false, firebaseProjectId: '' }, undefined), false);
+});
 
 test('cleanup claims expired sessions, removes Firebase identities, then deletes sessions', async () => {
   const calls = [];

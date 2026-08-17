@@ -10,7 +10,7 @@ const createPost = async (user_id, post_type, stock_code, opinion, title, conten
   const post = await communityRepository.findById(id, qaSessionId);
 
   // 팔로워들에게 알림 발송
-  const followers = await followRepository.findFollowers(user_id);
+  const followers = await followRepository.findFollowers(user_id, qaSessionId);
   for (const follower of followers) {
     await notificationService.createNotification(
       follower.id, user_id, 'FOLLOWEE_POST', id, title

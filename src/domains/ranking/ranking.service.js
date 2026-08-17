@@ -460,11 +460,148 @@ const emptyBoard = (seasonId, page, limit, extra = {}) => ({
   rankings: [],
 });
 
+const qaUpdatedAt = (rows) => rows.length ? rows[0].rank_date : null;
+
+const getQaIndividualLeaderboard = async (season, group, { page, limit, qaSessionId }) => {
+  const result = await rankingRepository.findQaRankings({
+    qaSessionId, seasonId: season.id, targetType: 'USER', schoolGroup: group, page, limit,
+  });
+  return {
+    season_id: season.id,
+    school_group: group,
+    updated_at: qaUpdatedAt(result.rows),
+    pagination: { page, limit, total: result.total },
+    rankings: result.rows.map((row) => ({
+      rank: row.rank_position,
+      rank_change: null,
+      user_id: row.target_id,
+      nickname: row.user_nickname,
+      school_name: row.user_school_name,
+      score: Number(row.final_score),
+      active_days: null,
+      participation_ratio: row.participation_rate == null ? null : Number(row.participation_rate) / 100,
+    })),
+  };
+};
+
+const getQaTeamLeaderboard = async (season, group, { page, limit, schoolId, qaSessionId }) => {
+  const result = await rankingRepository.findQaRankings({
+    qaSessionId, seasonId: season.id, targetType: 'TEAM', schoolGroup: group, page, limit, schoolId,
+  });
+  return {
+    season_id: season.id,
+    school_group: group,
+    ...(schoolId ? { school_id: schoolId } : {}),
+    updated_at: qaUpdatedAt(result.rows),
+    pagination: { page, limit, total: result.total },
+    rankings: result.rows.map((row) => ({
+      rank: row.rank_position,
+      rank_change: null,
+      team_id: row.target_id,
+      team_name: row.team_name,
+      school_name: row.team_school_name,
+      team_score: Number(row.final_score),
+      r_percent: Number(row.return_rate),
+    })),
+  };
+};
+
+const getQaSchoolLeaderboard = async (season, group, { mode, page, limit, qaSessionId }) => {
+  const targetType = mode === 'team' ? 'SCHOOL_TEAM' : 'SCHOOL_INDIVIDUAL';
+  const result = await rankingRepository.findQaRankings({
+    qaSessionId, seasonId: season.id, targetType, schoolGroup: group, page, limit,
+  });
+  return {
+    season_id: season.id,
+    school_group: group,
+    mode,
+    unit: mode === 'team' ? 'Point' : '%',
+    updated_at: qaUpdatedAt(result.rows),
+    pagination: { page, limit, total: result.total },
+    rankings: result.rows.map((row) => ({
+      rank: row.rank_position,
+      rank_change: null,
+      school_id: row.target_id,
+      school_name: row.organization_name,
+      score: Number(row.final_score),
+    })),
+  };
+};
+
+const getQaRankingSummary = async (userId, season, group, qaSessionId) => {
+  const schoolByUser = await rankingRepository.findSchoolIdsByUserIds([Number(userId)]);
+  const schoolId = schoolByUser.get(Number(userId)) ?? null;
+  const membership = await teamRepository.findMembershipByUserId(userId);
+  const queries = [
+    rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'USER', schoolGroup: group, targetId: Number(userId), page: 1, limit: 1 }),
+    membership
+      ? rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'TEAM', schoolGroup: group, targetId: membership.team_id, page: 1, limit: 1 })
+      : Promise.resolve({ total: 0, rows: [] }),
+    schoolId == null
+      ? Promise.resolve({ total: 0, rows: [] })
+      : rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'SCHOOL_INDIVIDUAL', schoolGroup: group, targetId: schoolId, page: 1, limit: 1 }),
+    schoolId == null
+      ? Promise.resolve({ total: 0, rows: [] })
+      : rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'SCHOOL_TEAM', schoolGroup: group, targetId: schoolId, page: 1, limit: 1 }),
+    rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'USER', schoolGroup: group, page: 1, limit: 1 }),
+    rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'TEAM', schoolGroup: group, page: 1, limit: 1 }),
+    rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'SCHOOL_INDIVIDUAL', schoolGroup: group, page: 1, limit: 1 }),
+    rankingRepository.findQaRankings({ qaSessionId, seasonId: season.id, targetType: 'SCHOOL_TEAM', schoolGroup: group, page: 1, limit: 1 }),
+  ];
+  const [
+    individualResult,
+    teamResult,
+    schoolIndividualResult,
+    schoolTeamResult,
+    participantCountResult,
+    teamCountResult,
+    schoolIndividualCountResult,
+    schoolTeamCountResult,
+  ] = await Promise.all(queries);
+  const individualRow = individualResult.rows[0];
+  const teamRow = teamResult.rows[0];
+  const schoolName = schoolIndividualResult.rows[0]?.organization_name
+    || schoolTeamResult.rows[0]?.organization_name
+    || null;
+  const schoolSummary = (row, total) => row ? {
+    school_id: schoolId,
+    school_name: schoolName,
+    rank: row.rank_position,
+    rank_change: null,
+    score: Number(row.final_score),
+    total_schools: total,
+  } : null;
+  return {
+    season_id: season.id,
+    school_group: group,
+    individual: individualRow ? {
+      rank: individualRow.rank_position,
+      rank_change: null,
+      score: Number(individualRow.final_score),
+      active_days: null,
+      participation_ratio: individualRow.participation_rate == null ? null : Number(individualRow.participation_rate) / 100,
+    } : null,
+    team: teamRow ? {
+      team_id: teamRow.target_id,
+      team_name: teamRow.team_name,
+      rank: teamRow.rank_position,
+      rank_change: null,
+      team_score: Number(teamRow.final_score),
+      r_percent: Number(teamRow.return_rate),
+      total_teams: teamCountResult.total,
+    } : null,
+    school_individual: schoolSummary(schoolIndividualResult.rows[0], schoolIndividualCountResult.total),
+    school_team: schoolSummary(schoolTeamResult.rows[0], schoolTeamCountResult.total),
+    total_participants: participantCountResult.total,
+  };
+};
+
 // GET /api/ranking/individual — 요청 유저의 그룹(고교/대학) 리그만 조회
-const getIndividualLeaderboard = async (userId, { page = 1, limit = 20 } = {}) => {
+const getIndividualLeaderboard = async (userId, { page = 1, limit = 20, qaSessionId = null } = {}) => {
   const season = await accountService.getOrCreateActiveSeason();
   const group = await resolveUserGroup(userId);
   if (!group) return emptyBoard(season.id, page, limit);
+  if (qaSessionId) return getQaIndividualLeaderboard(season, group, { page, limit, qaSessionId });
   const board = `${group}:individual`;
   const seasonStart = toDateOnly(season.start_date);
   const seasonEnd = toDateOnly(season.end_date);
@@ -528,10 +665,11 @@ const getIndividualLeaderboard = async (userId, { page = 1, limit = 20 } = {}) =
 // 팀 보드 자체의 동점 재정렬 기준으로는 쓰지 않는다(기획의 동점 재정렬 규칙은 개인 보드 대상).
 // ZSET은 동점을 연속
 // 배치하므로 페이지 첫 run만 이전 페이지에서 이어질 수 있어 countAbove로 시작 순위를 확정.
-const getTeamLeaderboard = async (userId, { page = 1, limit = 20, schoolId = null } = {}) => {
+const getTeamLeaderboard = async (userId, { page = 1, limit = 20, schoolId = null, qaSessionId = null } = {}) => {
   const season = await accountService.getOrCreateActiveSeason();
   const group = await resolveUserGroup(userId);
   if (!group) return emptyBoard(season.id, page, limit, schoolId ? { school_id: schoolId } : {});
+  if (qaSessionId) return getQaTeamLeaderboard(season, group, { page, limit, schoolId, qaSessionId });
   const board = `${group}:team`;
   // 학교 필터는 순위 계산 방식이 달라 별도 경로 (전량 읽기 후 필터) — 아래 페이지네이션 로직은 무수정
   if (schoolId) return getTeamLeaderboardBySchool(season, group, board, schoolId, page, limit);
@@ -701,11 +839,12 @@ const getMyRankHistory = async (userId, { seasonId = null, scope = 'individual',
 // GET /api/ranking/schools?mode=individual|team — 요청 유저의 그룹 리그만 조회
 // 소속(학교) 리더보드. org score는 recompute가 학교별 가중평균으로 미리 계산해 ZSET에 저장 —
 // 조회는 팀 리더보드와 동일한 공동 순위(1224식). 단위: 개인 소속 %, 팀 소속 Point.
-const getSchoolLeaderboard = async (userId, { mode = 'individual', page = 1, limit = 20 } = {}) => {
+const getSchoolLeaderboard = async (userId, { mode = 'individual', page = 1, limit = 20, qaSessionId = null } = {}) => {
   const unit = mode === 'team' ? 'Point' : '%';
   const season = await accountService.getOrCreateActiveSeason();
   const group = await resolveUserGroup(userId);
   if (!group) return emptyBoard(season.id, page, limit, { mode, unit });
+  if (qaSessionId) return getQaSchoolLeaderboard(season, group, { mode, page, limit, qaSessionId });
   const board = `${group}:${mode === 'team' ? 'school:team' : 'school:individual'}`;
   const offset = (page - 1) * limit;
 
@@ -784,7 +923,7 @@ const resolveMySchoolRank = async (seasonId, board, targetType, schoolId, school
 // rankingCache.getRank의 ZREVRANK는 동점자를 Redis 멤버 순서(임의)로만 구분하므로,
 // /individual 페이지가 보여주는 재정렬 결과와 어긋날 수 있다(예: 리더보드 1위인데 me는 3위로 나옴).
 // → 동점 그룹 전체를 attachParticipation의 동일한 재정렬 로직에 태워 일관된 순위를 낸다.
-const getMyRankingSummary = async (userId) => {
+const getMyRankingSummary = async (userId, { qaSessionId = null } = {}) => {
   const season = await accountService.getOrCreateActiveSeason();
   const seasonStart = toDateOnly(season.start_date);
   const seasonEnd = toDateOnly(season.end_date);
@@ -805,6 +944,7 @@ const getMyRankingSummary = async (userId) => {
       total_participants: 0,
     };
   }
+  if (qaSessionId) return getQaRankingSummary(userId, season, group, qaSessionId);
   const indivBoard = `${group}:individual`;
   const teamBoard = `${group}:team`;
 
