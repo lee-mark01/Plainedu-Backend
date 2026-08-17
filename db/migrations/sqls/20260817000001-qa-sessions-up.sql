@@ -32,3 +32,10 @@ ALTER TABLE DailyRankings
   ADD KEY idx_daily_rankings_qa_session (qa_session_id),
   ADD CONSTRAINT fk_daily_rankings_qa_session
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
+
+ALTER TABLE DailyRankings
+  DROP INDEX uq_dr_target_date,
+  ADD COLUMN qa_scope_key CHAR(36)
+    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED,
+  ADD UNIQUE KEY uq_dr_target_date_scope
+    (target_type, target_id, rank_date, season_id, qa_scope_key);

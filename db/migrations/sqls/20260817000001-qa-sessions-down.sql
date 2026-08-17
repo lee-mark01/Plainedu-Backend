@@ -1,7 +1,14 @@
+DELETE FROM QaSessions;
+
+ALTER TABLE DailyRankings
+  DROP INDEX uq_dr_target_date_scope,
+  DROP COLUMN qa_scope_key;
+
 ALTER TABLE DailyRankings
   DROP FOREIGN KEY fk_daily_rankings_qa_session,
   DROP INDEX idx_daily_rankings_qa_session,
-  DROP COLUMN qa_session_id;
+  DROP COLUMN qa_session_id,
+  ADD UNIQUE KEY uq_dr_target_date (target_type, target_id, rank_date, season_id);
 
 ALTER TABLE CommunityPosts
   DROP FOREIGN KEY fk_community_posts_qa_session,

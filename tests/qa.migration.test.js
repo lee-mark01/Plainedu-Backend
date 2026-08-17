@@ -18,6 +18,8 @@ test('QA session migration creates session relationships for every top-level QA 
     assert.match(sql, new RegExp(`ALTER TABLE ${table}[\\s\\S]*ADD COLUMN qa_session_id CHAR\\(36\\) NULL`, 'i'));
   }
   assert.equal((sql.match(/FOREIGN KEY \(qa_session_id\) REFERENCES QaSessions\(id\) ON DELETE CASCADE/gi) || []).length, 4);
+  assert.match(sql, /qa_scope_key CHAR\(36\)\s+GENERATED ALWAYS AS \(COALESCE\(qa_session_id, 'production'\)\) STORED/i);
+  assert.match(sql, /UNIQUE KEY uq_dr_target_date_scope\s+\(target_type, target_id, rank_date, season_id, qa_scope_key\)/i);
 });
 
 test('QA session down migration removes every aggregate scope before dropping sessions', async () => {
@@ -29,4 +31,6 @@ test('QA session down migration removes every aggregate scope before dropping se
     assert.ok(sql.indexOf(`ALTER TABLE ${table}`) >= 0);
     assert.ok(sql.indexOf(`ALTER TABLE ${table}`) < sql.indexOf('DROP TABLE IF EXISTS QaSessions'));
   }
+  assert.match(sql, /DELETE FROM QaSessions/i);
+  assert.match(sql, /ADD UNIQUE KEY uq_dr_target_date \(target_type, target_id, rank_date, season_id\)/i);
 });
