@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { appendQaScope } = require('../src/domains/qa/qa.scope');
 const { createPostRepository } = require('../src/domains/community/post.repository');
 const { createHotRepository } = require('../src/domains/community/hot.repository');
+const fs = require('node:fs');
 
 test('scope predicate exposes only production rows without a QA JWT', () => {
   const conditions = [];
@@ -47,4 +48,17 @@ test('hot queries exclude other QA sessions and production rows', async () => {
   await repository.findPopularPosts(5, 'session-a');
   assert.ok(calls.every(({ sql }) => /p\.qa_session_id = \?/.test(sql)));
   assert.ok(calls.every(({ params }) => params[0] === 'session-a'));
+});
+
+test('follow reads and writes validate the target against the verified session scope', () => {
+  const repository = fs.readFileSync('src/domains/community/follow.repository.js', 'utf8');
+  const service = fs.readFileSync('src/domains/community/follow.service.js', 'utf8');
+  const router = fs.readFileSync('src/domains/community/community.router.js', 'utf8');
+  assert.match(repository, /findScopedUser/);
+  assert.match(repository, /qa_session_id = \?/);
+  assert.match(repository, /qa_session_id IS NULL/);
+  assert.match(service, /assertScopedUser/);
+  assert.match(router, /follow\/counts', optionalAuthenticate/);
+  assert.match(router, /followers', optionalAuthenticate/);
+  assert.match(router, /followings', optionalAuthenticate/);
 });

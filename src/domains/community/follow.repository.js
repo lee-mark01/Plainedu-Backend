@@ -1,5 +1,19 @@
 const pool = require('../../config/db');
 
+const scopedUserCondition = (alias, qaSessionId) => ({
+  sql: qaSessionId ? `${alias}.qa_session_id = ?` : `${alias}.qa_session_id IS NULL`,
+  params: qaSessionId ? [qaSessionId] : [],
+});
+
+const findScopedUser = async (user_id, qaSessionId) => {
+  const scope = scopedUserCondition('u', qaSessionId);
+  const [rows] = await pool.query(
+    `SELECT u.id FROM Users u WHERE u.id = ? AND ${scope.sql}`,
+    [user_id, ...scope.params]
+  );
+  return rows[0] || null;
+};
+
 const findFollow = async (follower_id, followee_id) => {
   const [rows] = await pool.query(
     'SELECT id FROM Follows WHERE follower_id = ? AND followee_id = ?',
@@ -40,29 +54,33 @@ const countFollowings = async (user_id) => {
 };
 
 // 팔로워 목록
-const findFollowers = async (user_id) => {
+const findFollowers = async (user_id, qaSessionId) => {
+  const scope = scopedUserCondition('u', qaSessionId);
   const [rows] = await pool.query(
     `SELECT u.id, u.nickname, f.created_at AS followed_at
      FROM Follows f
      JOIN Users u ON f.follower_id = u.id
      WHERE f.followee_id = ?
+       AND ${scope.sql}
      ORDER BY f.created_at DESC`,
-    [user_id]
+    [user_id, ...scope.params]
   );
   return rows;
 };
 
 // 팔로잉 목록
-const findFollowings = async (user_id) => {
+const findFollowings = async (user_id, qaSessionId) => {
+  const scope = scopedUserCondition('u', qaSessionId);
   const [rows] = await pool.query(
     `SELECT u.id, u.nickname, f.created_at AS followed_at
      FROM Follows f
      JOIN Users u ON f.followee_id = u.id
      WHERE f.follower_id = ?
+       AND ${scope.sql}
      ORDER BY f.created_at DESC`,
-    [user_id]
+    [user_id, ...scope.params]
   );
   return rows;
 };
 
-module.exports = { findFollow, insertFollow, deleteFollow, countFollowers, countFollowings, findFollowers, findFollowings };
+module.exports = { findScopedUser, findFollow, insertFollow, deleteFollow, countFollowers, countFollowings, findFollowers, findFollowings };

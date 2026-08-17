@@ -42,9 +42,9 @@ router.get('/hot/posts', optionalAuthenticate, validate(hotListSchema, 'query'),
 
 // 팔로우 (인증 필요)
 router.post('/users/:user_id/follow', authenticate, followController.toggleFollow);
-router.get('/users/:user_id/follow/counts', followController.getFollowCounts);
-router.get('/users/:user_id/followers', followController.getFollowers);
-router.get('/users/:user_id/followings', followController.getFollowings);
+router.get('/users/:user_id/follow/counts', optionalAuthenticate, followController.getFollowCounts);
+router.get('/users/:user_id/followers', optionalAuthenticate, followController.getFollowers);
+router.get('/users/:user_id/followings', optionalAuthenticate, followController.getFollowings);
 
 // 알림 (인증 필요)
 router.get('/notifications', authenticate, validate(getNotificationsSchema, 'query'), notificationController.getNotifications);
