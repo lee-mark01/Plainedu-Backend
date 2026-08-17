@@ -1,0 +1,16 @@
+CREATE TABLE QaSessions (
+  id CHAR(36) NOT NULL,
+  firebase_uid VARCHAR(128) NOT NULL UNIQUE,
+  root_user_id INT NULL,
+  expires_at DATETIME NOT NULL,
+  cleanup_started_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_qa_sessions_expiry (expires_at, cleanup_started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE Users
+  ADD COLUMN qa_session_id CHAR(36) NULL,
+  ADD KEY idx_users_qa_session (qa_session_id),
+  ADD CONSTRAINT fk_users_qa_session
+    FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
