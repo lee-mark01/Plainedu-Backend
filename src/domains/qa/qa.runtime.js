@@ -4,6 +4,7 @@ const repository = require('./qa.repository');
 const { getQaFirebaseAdmin } = require('./firebaseAdmin');
 const { verifyQaPin } = require('./qa.pin');
 const { createQaSessionService } = require('./qa.service');
+const { seedQaFixtures } = require('./fixtures');
 
 const getQaSessionService = () => {
   const config = getQaConfig();
@@ -12,7 +13,7 @@ const getQaSessionService = () => {
     repository,
     firebaseAdmin: config.enabled ? getQaFirebaseAdmin(config) : null,
     verifyPin: verifyQaPin,
-    seedFixtures: (executor, context) => repository.createRootFixture(executor, context),
+    seedFixtures: seedQaFixtures,
     withTransaction: db.withTransaction,
   });
 };
