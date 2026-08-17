@@ -6,10 +6,20 @@ const validate = require('../../middlewares/validate');
 const rateLimit = require('../../middlewares/rateLimit');
 const emailVerificationController = require('./emailVerification.controller');
 const { sendCodeSchema, verifyCodeSchema } = require('./emailVerification.validator');
+const qaController = require('../qa/qa.controller');
+const requireQaEnabled = require('../qa/qa.available');
+const { qaSessionSchema } = require('../qa/qa.validator');
 
 // app.js의 OAuth 리다이렉트 콜백(GET)도 같은 컨트롤러라 거기에도 같은 리미터를 건다.
 const loginLimit = rateLimit('login', 60, 300);
 
+router.post(
+  '/qa-session',
+  requireQaEnabled,
+  rateLimit('qa-login', 5, 900),
+  validate(qaSessionSchema),
+  qaController.createSession
+);
 router.post('/kakao', loginLimit, authController.kakaoLogin);
 router.post('/naver', loginLimit, authController.naverLogin);
 router.post('/google', loginLimit, authController.googleLogin);

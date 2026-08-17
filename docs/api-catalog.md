@@ -20,6 +20,7 @@
 
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
+| POST | `/api/auth/qa-session` | — | QA 배포 전용. 6~12자리 PIN을 검증하고 격리된 임시 사용자용 Firebase custom token 발급. 비활성화 시 404 |
 | POST | `/api/auth/kakao` | — | 카카오 로그인. body `{ code }` → 유저 생성/로그인 + access/refresh 토큰 (+개인계좌 자동 생성) |
 | POST | `/api/auth/naver` | — | 네이버 로그인. 동일 흐름 |
 | POST | `/api/auth/google` | — | 구글 로그인. 동일 흐름 |

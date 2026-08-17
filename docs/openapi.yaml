@@ -83,6 +83,58 @@ security:
 
 paths:
   # ───────────────────────────── auth ─────────────────────────────
+  /api/auth/qa-session:
+    post:
+      tags: [auth]
+      summary: Preview QA 임시 세션 생성
+      description: |
+        QA 전용 배포에서만 활성화된다. 회전 가능한 PIN을 검증한 뒤 격리된 임시 사용자와
+        초기 fixture를 만들고 QA Firebase 프로젝트의 custom token을 반환한다.
+        비활성화된 배포에서는 PIN 검증 전에 404 `QA_AUTH_DISABLED`를 반환한다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              additionalProperties: false
+              properties:
+                pin:
+                  type: string
+                  pattern: '^\d{6,12}$'
+                  writeOnly: true
+      responses:
+        '201':
+          description: QA Firebase custom token 발급 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [customToken, expiresAt]
+                    properties:
+                      customToken: { type: string, writeOnly: true }
+                      expiresAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: PIN 불일치 (`QA_PIN_INVALID`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: QA 인증 비활성화 (`QA_AUTH_DISABLED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/auth/kakao:
     post:
       tags: [auth]

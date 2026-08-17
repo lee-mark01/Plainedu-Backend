@@ -24,6 +24,7 @@
     "db-migrate-mysql": "^3.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "firebase-admin": "^13.10.0",
     "ioredis": "^5.11.1",
     "joi": "^18.2.1",
     "js-yaml": "^4.1.0",

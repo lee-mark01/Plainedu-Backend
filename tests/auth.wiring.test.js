@@ -125,6 +125,12 @@ test('POST /api/auth/firebase-token — ID 토큰이 없으면 400으로 거부�
   assert.strictEqual((await res.json()).code, 'FIREBASE_TOKEN_REQUIRED');
 });
 
+test('POST /api/auth/qa-session — disabled server hides the endpoint before PIN validation', async () => {
+  const res = await call('POST', '/api/auth/qa-session', { body: {} });
+  assert.strictEqual(res.status, 404);
+  assert.strictEqual((await res.json()).code, 'QA_AUTH_DISABLED');
+});
+
 test('Authorization 헤더가 Bearer 형식이 아니면 401', async () => {
   const res = await fetch(`${base}/api/accounts/me`, { headers: { Authorization: 'abc123' } });
   assert.strictEqual(res.status, 401);
