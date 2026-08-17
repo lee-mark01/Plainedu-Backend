@@ -13,7 +13,7 @@ const createComment = async (user_id, post_id, content, parent_id, qaSessionId) 
     let parentComment = null;
     if (parent_id) {
         parentComment = await commentRepository.findById(parent_id);
-        if (!parentComment) {
+        if (!parentComment || parentComment.post_id !== Number(post_id)) {
             throw new AppError('Parent comment not found', 404);
         }
     }

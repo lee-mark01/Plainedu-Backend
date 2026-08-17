@@ -64,3 +64,13 @@ test('follow reads and writes validate the target against the verified session s
   const postService = fs.readFileSync('src/domains/community/post.service.js', 'utf8');
   assert.match(postService, /findFollowers\(user_id, qaSessionId\)/);
 });
+
+test('indirect mutable IDs cannot cross a QA team or post boundary', () => {
+  const commentService = fs.readFileSync('src/domains/community/comment.service.js', 'utf8');
+  const portfolioService = fs.readFileSync('src/domains/portfolio/portfolio.service.js', 'utf8');
+  assert.match(commentService, /parentComment\.post_id !== Number\(post_id\)/);
+  assert.ok(
+    (portfolioService.match(/portfolio\.team_id !== membership\.team_id/g) || []).length >= 3,
+    'portfolio detail, vote list, and vote mutation must all enforce the caller team'
+  );
+});

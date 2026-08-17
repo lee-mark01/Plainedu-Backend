@@ -85,10 +85,12 @@ const getActivePortfolio = async (userId) => {
 // ── MP 상세 조회 ──
 
 const getPortfolioDetail = async (userId, portfolioId) => {
-  await requireTeamMembership(userId);
+  const membership = await requireTeamMembership(userId);
 
   const portfolio = await portfolioRepository.findById(portfolioId);
-  if (!portfolio) throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);
+  if (!portfolio || portfolio.team_id !== membership.team_id) {
+    throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);
+  }
 
   const allocations = await portfolioRepository.findAllocationsByPortfolioId(portfolioId);
   const votes = await portfolioRepository.findVotesByPortfolioId(portfolioId);
@@ -286,10 +288,12 @@ const vote = async (userId, portfolioId, isApproved) => {
 // ── 투표 현황 조회 ──
 
 const getVotes = async (userId, portfolioId) => {
-  await requireTeamMembership(userId);
+  const membership = await requireTeamMembership(userId);
 
   const portfolio = await portfolioRepository.findById(portfolioId);
-  if (!portfolio) throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);
+  if (!portfolio || portfolio.team_id !== membership.team_id) {
+    throw new AppError('포트폴리오를 찾을 수 없습니다.', 404);
+  }
 
   const votes = await portfolioRepository.findVotesByPortfolioId(portfolioId);
   return {
