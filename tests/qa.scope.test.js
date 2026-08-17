@@ -73,4 +73,5 @@ test('indirect mutable IDs cannot cross a QA team or post boundary', () => {
     (portfolioService.match(/portfolio\.team_id !== membership\.team_id/g) || []).length >= 3,
     'portfolio detail, vote list, and vote mutation must all enforce the caller team'
   );
+  assert.match(portfolioService, /parent\.team_id !== teamId/);
 });

@@ -108,6 +108,12 @@ const createPortfolio = async (userId, data) => {
   if (data.status === 'PENDING') {
     validateAllocationsSum(data.allocations);
   }
+  if (data.parent_id) {
+    const parent = await portfolioRepository.findById(data.parent_id);
+    if (!parent || parent.team_id !== teamId) {
+      throw new AppError('상위 포트폴리오를 찾을 수 없습니다.', 404);
+    }
+  }
 
   const conn = await pool.getConnection();
   try {
