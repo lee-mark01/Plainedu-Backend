@@ -2,25 +2,27 @@ const { getQaSessionService } = require('./qa.runtime');
 const { getQaConfig } = require('../../config/qa');
 const { getQaAbuseGuard } = require('./qa.abuse');
 
-const createSession = async (req, res, next) => {
+const createQaController = ({ getConfig = getQaConfig, getAbuse = getQaAbuseGuard, getService = getQaSessionService } = {}) => ({
+  createSession: async (req, res, next) => {
   try {
-    const abuseGuard = getQaAbuseGuard(getQaConfig());
-    await abuseGuard.assertAllowed(req.ip);
-    const result = await getQaSessionService().createSession(req.validated.pin, {
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    });
+    const abuseGuard = getAbuse(getConfig());
+    const reservation = await abuseGuard.reserve(req.ip);
+    let result;
+    try {
+      result = await getService().createSession(req.validated.pin, {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    } catch (error) {
+      if (error.code !== 'QA_PIN_INVALID') await abuseGuard.release(reservation);
+      throw error;
+    }
+    await abuseGuard.release(reservation);
     res.status(201).json({ success: true, data: result });
   } catch (error) {
-    if (error.code === 'QA_PIN_INVALID') {
-      try {
-        await getQaAbuseGuard(getQaConfig()).recordFailure(req.ip);
-      } catch (guardError) {
-        return next(guardError);
-      }
-    }
     next(error);
   }
-};
+  },
+});
 
-module.exports = { createSession };
+module.exports = { ...createQaController(), createQaController };
