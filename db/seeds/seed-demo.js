@@ -19,6 +19,8 @@
 require('dotenv').config();
 
 const pool = require('../../src/config/db');
+const redis = require('../../src/config/redis');
+const { closeSeedResources } = require('./seed-resources');
 const AppError = require('../../src/errors/AppError');
 const { signAccessToken } = require('../../src/utils/jwt');
 const accountService = require('../../src/domains/account/account.service');
@@ -303,6 +305,6 @@ const runOrSkip = async (label, fn) => {
     console.error('더미 데이터 시딩 실패:', err.message);
     process.exitCode = 1;
   } finally {
-    await pool.end();
+    await closeSeedResources({ pool, redis });
   }
 })();
