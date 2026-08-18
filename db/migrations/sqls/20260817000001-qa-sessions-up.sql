@@ -23,10 +23,12 @@ ALTER TABLE Teams
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE Teams
-  DROP INDEX uq_teams_school_name,
   ADD COLUMN qa_scope_key CHAR(36)
     GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED,
   ADD UNIQUE KEY uq_teams_school_name_scope (school_id, name, qa_scope_key);
+
+ALTER TABLE Teams
+  DROP INDEX uq_teams_school_name;
 
 ALTER TABLE Topics
   ADD COLUMN level_number INT NOT NULL DEFAULT 1 AFTER title,

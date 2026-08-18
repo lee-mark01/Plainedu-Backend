@@ -20,12 +20,14 @@ ALTER TABLE Topics
   DROP COLUMN level_number;
 
 ALTER TABLE Teams
+  ADD UNIQUE KEY uq_teams_school_name (school_id, name);
+
+ALTER TABLE Teams
   DROP INDEX uq_teams_school_name_scope,
   DROP COLUMN qa_scope_key,
   DROP FOREIGN KEY fk_teams_qa_session,
   DROP INDEX idx_teams_qa_session,
-  DROP COLUMN qa_session_id,
-  ADD UNIQUE KEY uq_teams_school_name (school_id, name);
+  DROP COLUMN qa_session_id;
 
 ALTER TABLE Users
   DROP FOREIGN KEY fk_users_qa_session,
