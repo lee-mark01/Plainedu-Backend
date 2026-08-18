@@ -10,7 +10,7 @@
     "seed:stocks": "node db/seeds/seed-stocks.js",
     "seed:users": "node db/seeds/seed-users.js",
     "seed:demo": "node db/seeds/seed-demo.js",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test",
     "check:openapi": "node scripts/check-openapi.js"
   },
   "keywords": [],
