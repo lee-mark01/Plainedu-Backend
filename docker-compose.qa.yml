@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: plainedu-qa-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    env_file:
+      - .env.qa
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+      - production
+
+  redis:
+    image: redis:7-alpine
+    container_name: plainedu-qa-redis
+    restart: unless-stopped
+    volumes:
+      - qa_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  production:
+    external: true
+    name: plainedu-backend_default
+
+volumes:
+  qa_redis_data:
+

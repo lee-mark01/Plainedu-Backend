@@ -1,0 +1,122 @@
+name: Deploy QA Preview
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-qa-preview
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy isolated QA API via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          QA_DB_PASSWORD: ${{ secrets.QA_DB_PASSWORD }}
+          QA_JWT_ACCESS_SECRET: ${{ secrets.QA_JWT_ACCESS_SECRET }}
+          QA_AUTH_PIN_HASH: ${{ secrets.QA_AUTH_PIN_HASH }}
+          QA_FIREBASE_SERVICE_ACCOUNT_B64: ${{ secrets.QA_FIREBASE_SERVICE_ACCOUNT_B64 }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: QA_DB_PASSWORD,QA_JWT_ACCESS_SECRET,QA_AUTH_PIN_HASH,QA_FIREBASE_SERVICE_ACCOUNT_B64
+          script_stop: true
+          script: |
+            set -eu
+
+            qa_dir="$HOME/Plainedu-Backend-QA"
+            qa_branch="codex/qa-session-implementation"
+            production_dir="$HOME/Plainedu-Backend"
+
+            if [ ! -d "$qa_dir/.git" ]; then
+              git clone --branch "$qa_branch" --single-branch https://github.com/Plain-edu/Plainedu-Backend.git "$qa_dir"
+            else
+              cd "$qa_dir"
+              git fetch origin "$qa_branch"
+              git checkout "$qa_branch"
+              git merge --ff-only "origin/$qa_branch"
+            fi
+
+            cd "$qa_dir"
+            test -f "$production_dir/.env"
+            set -a
+            . "$production_dir/.env"
+            set +a
+
+            docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
+              "CREATE DATABASE IF NOT EXISTS plainedu_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; ALTER USER 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; GRANT ALL PRIVILEGES ON plainedu_qa.* TO 'plainedu_qa'@'%'; FLUSH PRIVILEGES;"
+
+            qa_service_account_json="$(printf '%s' "$QA_FIREBASE_SERVICE_ACCOUNT_B64" | base64 --decode | tr -d '\n')"
+            umask 077
+            {
+              printf '%s\n' \
+                'PORT=3000' \
+                'DB_HOST=mysql' \
+                'DB_PORT=3306' \
+                'DB_USER=plainedu_qa' \
+                "DB_PASSWORD=$QA_DB_PASSWORD" \
+                'DB_NAME=plainedu_qa' \
+                "JWT_ACCESS_SECRET=$QA_JWT_ACCESS_SECRET" \
+                'JWT_ACCESS_EXPIRES_IN=15m' \
+                'FIREBASE_PROJECT_ID=plainedu-qa-preview' \
+                'QA_AUTH_ENABLED=true' \
+                'QA_DEPLOYMENT_MODE=true' \
+                "QA_AUTH_PIN_HASH=$QA_AUTH_PIN_HASH" \
+                'QA_FIREBASE_PROJECT_ID=plainedu-qa-preview' \
+                'QA_SESSION_TTL_HOURS=8' \
+                'QA_DATA_RETENTION_HOURS=24' \
+                'QA_PIN_GLOBAL_FAILURE_LIMIT=50' \
+                'PRODUCTION_DB_NAME=plainedu' \
+                'PRODUCTION_FIREBASE_PROJECT_ID=plainedu-2c6b9' \
+                'REDIS_URL=redis://redis:6379' \
+                "TWELVEDATA_API_KEY=${TWELVEDATA_API_KEY:-}" \
+                'REALTIME_SYMBOLS=AAPL,MSFT,NVDA' \
+                'PRICE_TTL_SECONDS=60'
+              printf 'QA_FIREBASE_SERVICE_ACCOUNT_JSON=%s\n' "$qa_service_account_json"
+            } > .env.qa
+
+            docker compose -p plainedu-qa -f docker-compose.qa.yml build app
+            docker compose -p plainedu-qa -f docker-compose.qa.yml up -d redis
+            docker compose -p plainedu-qa -f docker-compose.qa.yml run --rm app npm run migrate
+            docker compose -p plainedu-qa -f docker-compose.qa.yml up -d app
+
+            site=/etc/nginx/sites-available/plainedu
+            if ! sudo grep -q '# BEGIN PLAINEDU QA' "$site"; then
+              test "$(sudo tail -n 1 "$site" | tr -d '[:space:]')" = '}'
+              route_file="$(mktemp)"
+              sudo head -n -1 "$site" > "$route_file"
+              printf '%s\n' \
+                '    # BEGIN PLAINEDU QA' \
+                '    location /qa/ {' \
+                '        proxy_pass http://127.0.0.1:3001/;' \
+                '        proxy_http_version 1.1;' \
+                '        proxy_set_header Host $host;' \
+                '        proxy_set_header X-Real-IP $remote_addr;' \
+                '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+                '        proxy_set_header X-Forwarded-Proto $scheme;' \
+                '        proxy_set_header Upgrade $http_upgrade;' \
+                '        proxy_set_header Connection "upgrade";' \
+                '        proxy_read_timeout 300s;' \
+                '        proxy_send_timeout 300s;' \
+                '    }' \
+                '    # END PLAINEDU QA' \
+                '}' >> "$route_file"
+              sudo install -m 0644 "$route_file" "$site"
+              rm -f "$route_file"
+            fi
+
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            curl --fail --silent --show-error https://api.plainedu.org/qa/api/health >/dev/null
+            test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --header 'content-type: application/json' \
+              --data '{"pin":"invalid"}' \
+              https://api.plainedu.org/qa/api/auth/qa-session)" = '401'
+            test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --header 'content-type: application/json' \
+              --data '{"pin":"invalid"}' \
+              https://api.plainedu.org/api/auth/qa-session)" = '404'
