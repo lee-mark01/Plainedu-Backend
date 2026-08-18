@@ -62,10 +62,9 @@ jobs:
             DB_PASSWORD="$(read_env_value DB_PASSWORD)"
             TWELVEDATA_API_KEY="$(read_env_value TWELVEDATA_API_KEY)"
             if [ -z "$DB_PASSWORD" ]; then
-              printf '%s\n' 'DB_PASSWORD is missing from the production environment' >&2
-              sed -n 's/^\(DB_[A-Z_]*\)=.*/available key: \1/p' "$production_dir/.env" >&2
-              exit 1
+              DB_PASSWORD="$(docker exec plainedu-mysql printenv MYSQL_ROOT_PASSWORD)"
             fi
+            test -n "$DB_PASSWORD"
             printf '%s\n' 'Production environment parsed'
 
             docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
