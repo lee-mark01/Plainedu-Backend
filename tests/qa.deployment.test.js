@@ -17,11 +17,14 @@ test('QA deployment is manually gated and installs an HTTPS path without touchin
   const workflow = fs.readFileSync('.github/workflows/deploy-qa.yml', 'utf8');
 
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\[codex\/qa-session-implementation\]/);
   assert.match(workflow, /codex\/qa-session-implementation/);
   assert.match(workflow, /DB_NAME=plainedu_qa/);
   assert.match(workflow, /QA_AUTH_ENABLED=true/);
   assert.match(workflow, /QA_DEPLOYMENT_MODE=true/);
   assert.match(workflow, /QA_FIREBASE_PROJECT_ID=plainedu-qa-preview/);
+  assert.match(workflow, /git clone "\$production_dir" "\$qa_dir"/);
+  assert.doesNotMatch(workflow, /git clone[^\n]+https:\/\/github\.com/);
   assert.match(workflow, /location \/qa\//);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:3001\//);
   assert.doesNotMatch(workflow, /seed:demo/);

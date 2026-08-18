@@ -1,6 +1,8 @@
 name: Deploy QA Preview
 
 on:
+  push:
+    branches: [codex/qa-session-implementation]
   workflow_dispatch:
 
 concurrency:
@@ -32,7 +34,11 @@ jobs:
             production_dir="$HOME/Plainedu-Backend"
 
             if [ ! -d "$qa_dir/.git" ]; then
-              git clone --branch "$qa_branch" --single-branch https://github.com/Plain-edu/Plainedu-Backend.git "$qa_dir"
+              git clone "$production_dir" "$qa_dir"
+              production_origin="$(git -C "$production_dir" remote get-url origin)"
+              git -C "$qa_dir" remote set-url origin "$production_origin"
+              git -C "$qa_dir" fetch origin "$qa_branch"
+              git -C "$qa_dir" checkout -b "$qa_branch" "origin/$qa_branch"
             else
               cd "$qa_dir"
               git fetch origin "$qa_branch"
