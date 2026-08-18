@@ -64,6 +64,10 @@ test('QA fixture identities and authored content are visibly synthetic and sessi
   assert.match(serializedParams, /QA/);
   assert.match(serializedParams, /qa\.invalid/);
   assert.match(serializedParams, /aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/);
+
+  const sql = calls.map(([statement]) => statement).join('\n');
+  assert.match(sql, /INSERT INTO Teams \([^)]*qa_session_id[^)]*qa_scope_key/i);
+  assert.match(sql, /INSERT INTO DailyRankings \([^)]*qa_session_id[^)]*qa_scope_key/i);
 });
 
 test('learning fixture includes one completed quiz and one real incomplete quiz', async () => {

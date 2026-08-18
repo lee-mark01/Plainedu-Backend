@@ -23,8 +23,7 @@ ALTER TABLE Teams
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE Teams
-  ADD COLUMN qa_scope_key CHAR(36)
-    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED;
+  ADD COLUMN qa_scope_key CHAR(36) NOT NULL DEFAULT 'production';
 
 ALTER TABLE Teams
   ADD UNIQUE KEY uq_teams_school_name_scope (school_id, name, qa_scope_key);
@@ -49,8 +48,7 @@ ALTER TABLE DailyRankings
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE DailyRankings
-  ADD COLUMN qa_scope_key CHAR(36)
-    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED;
+  ADD COLUMN qa_scope_key CHAR(36) NOT NULL DEFAULT 'production';
 
 ALTER TABLE DailyRankings
   ADD UNIQUE KEY uq_dr_target_date_scope

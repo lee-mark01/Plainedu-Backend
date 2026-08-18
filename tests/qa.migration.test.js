@@ -18,7 +18,8 @@ test('QA session migration creates session relationships for every top-level QA 
     assert.match(sql, new RegExp(`ALTER TABLE ${table}[\\s\\S]*ADD COLUMN qa_session_id CHAR\\(36\\) NULL`, 'i'));
   }
   assert.equal((sql.match(/FOREIGN KEY \(qa_session_id\) REFERENCES QaSessions\(id\) ON DELETE CASCADE/gi) || []).length, 4);
-  assert.match(sql, /qa_scope_key CHAR\(36\)\s+GENERATED ALWAYS AS \(COALESCE\(qa_session_id, 'production'\)\) STORED/i);
+  assert.equal((sql.match(/qa_scope_key CHAR\(36\) NOT NULL DEFAULT 'production'/gi) || []).length, 2);
+  assert.doesNotMatch(sql, /GENERATED ALWAYS/i);
   assert.match(sql, /UNIQUE KEY uq_dr_target_date_scope\s+\(target_type, target_id, rank_date, season_id, qa_scope_key\)/i);
   assert.match(sql, /UNIQUE KEY uq_teams_school_name_scope \(school_id, name, qa_scope_key\)/i);
   assert.match(sql, /ALTER TABLE Topics[\s\S]*ADD COLUMN level_number INT NOT NULL DEFAULT 1/i);

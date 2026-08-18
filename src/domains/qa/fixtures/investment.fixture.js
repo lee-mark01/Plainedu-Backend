@@ -12,9 +12,9 @@ const seedInvestment = async (executor, { qaSessionId, now, users, catalog }) =>
   const joinCode = qaSessionId.replace(/-/g, '').slice(0, 8).toUpperCase();
   const teamId = await insert(
     executor,
-    `INSERT INTO Teams (school_id, name, join_code, max_member_count, current_member_count, qa_session_id)
-     VALUES (?, ?, ?, 4, 3, ?)`,
-    [catalog.schoolId, `QA 알파팀 ${qaSessionId.slice(0, 4)}`, joinCode, qaSessionId]
+    `INSERT INTO Teams (school_id, name, join_code, max_member_count, current_member_count, qa_session_id, qa_scope_key)
+     VALUES (?, ?, ?, 4, 3, ?, ?)`,
+    [catalog.schoolId, `QA 알파팀 ${qaSessionId.slice(0, 4)}`, joinCode, qaSessionId, qaSessionId]
   );
   await executor.query(
     `INSERT INTO TeamMembers (team_id, user_id, role) VALUES
