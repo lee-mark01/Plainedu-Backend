@@ -25,7 +25,6 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: QA_DB_PASSWORD,QA_JWT_ACCESS_SECRET,QA_AUTH_PIN_HASH,QA_FIREBASE_SERVICE_ACCOUNT_B64
-          script_stop: true
           script: |
             set -eu
 
@@ -48,9 +47,17 @@ jobs:
 
             cd "$qa_dir"
             test -f "$production_dir/.env"
-            set -a
-            . "$production_dir/.env"
-            set +a
+            read_env_value() {
+              value="$(sed -n "s/^$1=//p" "$production_dir/.env" | tail -n 1 | tr -d '\r')"
+              case "$value" in
+                \"*\") value="${value#\"}"; value="${value%\"}" ;;
+                \'*\') value="${value#\'}"; value="${value%\'}" ;;
+              esac
+              printf '%s' "$value"
+            }
+            DB_PASSWORD="$(read_env_value DB_PASSWORD)"
+            TWELVEDATA_API_KEY="$(read_env_value TWELVEDATA_API_KEY)"
+            test -n "$DB_PASSWORD"
 
             docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
               "CREATE DATABASE IF NOT EXISTS plainedu_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; ALTER USER 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; GRANT ALL PRIVILEGES ON plainedu_qa.* TO 'plainedu_qa'@'%'; FLUSH PRIVILEGES;"

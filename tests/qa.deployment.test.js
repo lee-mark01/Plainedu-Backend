@@ -25,6 +25,8 @@ test('QA deployment is manually gated and installs an HTTPS path without touchin
   assert.match(workflow, /QA_FIREBASE_PROJECT_ID=plainedu-qa-preview/);
   assert.match(workflow, /git clone "\$production_dir" "\$qa_dir"/);
   assert.doesNotMatch(workflow, /git clone[^\n]+https:\/\/github\.com/);
+  assert.match(workflow, /read_env_value\(\)/);
+  assert.doesNotMatch(workflow, /\. "\$production_dir\/\.env"/);
   assert.match(workflow, /location \/qa\//);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:3001\//);
   assert.doesNotMatch(workflow, /seed:demo/);
