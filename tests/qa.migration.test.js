@@ -26,6 +26,14 @@ test('QA session migration creates session relationships for every top-level QA 
     sql.indexOf('ADD UNIQUE KEY uq_teams_school_name_scope') < sql.indexOf('DROP INDEX uq_teams_school_name'),
     'the replacement team index must exist before dropping the index used by fk_teams_school'
   );
+  assert.match(
+    sql,
+    /ALTER TABLE Teams\s+ADD COLUMN qa_scope_key[\s\S]*?;\s*ALTER TABLE Teams\s+ADD UNIQUE KEY uq_teams_school_name_scope/i
+  );
+  assert.match(
+    sql,
+    /ALTER TABLE DailyRankings\s+ADD COLUMN qa_scope_key[\s\S]*?;\s*ALTER TABLE DailyRankings\s+ADD UNIQUE KEY uq_dr_target_date_scope/i
+  );
 });
 
 test('QA session down migration removes every aggregate scope before dropping sessions', async () => {
@@ -43,5 +51,9 @@ test('QA session down migration removes every aggregate scope before dropping se
   assert.ok(
     sql.indexOf('ADD UNIQUE KEY uq_teams_school_name (school_id, name)') < sql.indexOf('DROP INDEX uq_teams_school_name_scope'),
     'the original team index must be restored before dropping the scope index used by fk_teams_school'
+  );
+  assert.ok(
+    sql.indexOf('ADD UNIQUE KEY uq_dr_target_date (target_type, target_id, rank_date, season_id)') < sql.indexOf('DROP INDEX uq_dr_target_date_scope'),
+    'the original ranking index must be restored before dropping its scoped replacement'
   );
 });

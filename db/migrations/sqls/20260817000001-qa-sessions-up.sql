@@ -24,7 +24,9 @@ ALTER TABLE Teams
 
 ALTER TABLE Teams
   ADD COLUMN qa_scope_key CHAR(36)
-    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED,
+    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED;
+
+ALTER TABLE Teams
   ADD UNIQUE KEY uq_teams_school_name_scope (school_id, name, qa_scope_key);
 
 ALTER TABLE Teams
@@ -47,8 +49,12 @@ ALTER TABLE DailyRankings
     FOREIGN KEY (qa_session_id) REFERENCES QaSessions(id) ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE DailyRankings
-  DROP INDEX uq_dr_target_date,
   ADD COLUMN qa_scope_key CHAR(36)
-    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED,
+    GENERATED ALWAYS AS (COALESCE(qa_session_id, 'production')) STORED;
+
+ALTER TABLE DailyRankings
   ADD UNIQUE KEY uq_dr_target_date_scope
     (target_type, target_id, rank_date, season_id, qa_scope_key);
+
+ALTER TABLE DailyRankings
+  DROP INDEX uq_dr_target_date;
