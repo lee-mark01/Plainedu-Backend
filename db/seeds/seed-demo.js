@@ -27,6 +27,7 @@ const teamRepository = require('../../src/domains/team/team.repository');
 const tradingService = require('../../src/domains/trading/trading.service');
 const teamOrderService = require('../../src/domains/trading/teamOrder.service');
 const rankingService = require('../../src/domains/ranking/ranking.service');
+const portfolioService = require('../../src/domains/portfolio/portfolio.service');
 
 const DUMMY_SCHOOLS = [
   { schoolName: '테스트고등학교', region: '테스트' },
@@ -53,7 +54,7 @@ const REQUIRED_STOCKS = ['AAPL', 'MSFT', 'TSLA', 'GOOGL', 'NVDA'];
 
 // 계좌마다 다른 종목/수량을 사서 리그 순위에 실제 차이가 나게 함
 const INDIVIDUAL_ORDER_PLAN = {
-  'dummy.leader@test.com': [{ stock_code: 'AAPL', qty: 5 }],
+  'dummy.leader@test.com': [{ stock_code: 'AAPL', qty: 5 }, { stock_code: 'MSFT', qty: 3 }],
   'dummy.member1@test.com': [{ stock_code: 'MSFT', qty: 4 }],
   'dummy.solo1@test.com': [{ stock_code: 'MSFT', qty: 8 }],
   'dummy.solo2@test.com': [{ stock_code: 'TSLA', qty: 6 }],
@@ -64,6 +65,15 @@ const INDIVIDUAL_ORDER_PLAN = {
 const TEAM_ORDER_PLAN = [{ stock_code: 'NVDA', qty: 10 }];
 const TEAM_NAME = '더미팀';
 const TEAM_MAX_MEMBERS = 5;
+const MP_PLAN = {
+  title: '[QA] 성장주 모델포트폴리오',
+  description: 'QA 테스트용 활성 포트폴리오',
+  analysis: 'AI 반도체와 대형 기술주 비중 테스트',
+  allocations: [
+    { stock_code: 'NVDA', target_percentage: 60, reason: 'AI 수요 지속' },
+    { stock_code: 'AAPL', target_percentage: 40, reason: '대형 기술주 편입' },
+  ],
+};
 
 const upsertSchool = async ({ schoolName, region }) => {
   await pool.query('INSERT IGNORE INTO schools (school_name, region) VALUES (?, ?)', [schoolName, region]);
@@ -176,7 +186,85 @@ const runOrSkip = async (label, fn) => {
       );
     }
 
-    console.log('[6/6] 리그 순위 즉시 재계산 (장 시간 무관)...');
+    await pool.query(
+      `INSERT IGNORE INTO Watchlist (user_id, stock_code) VALUES (?, 'AAPL'), (?, 'NVDA')`,
+      [leaderId, leaderId]
+    );
+    const [[leaderAccount]] = await pool.query(
+      `SELECT id FROM VirtualAccounts
+       WHERE user_id = ? AND season_id = ? AND account_type = 'INDIVIDUAL'`,
+      [leaderId, season.id]
+    );
+    const [[teamAccount]] = await pool.query(
+      `SELECT id FROM VirtualAccounts
+       WHERE team_id = ? AND season_id = ? AND account_type = 'TEAM'`,
+      [team.id, season.id]
+    );
+    // 외부 시세 API가 잠시 실패해 주문이 건너뛰어도 투자 화면의 필수 fixture는 보장한다.
+    await pool.query(
+      `INSERT INTO AccountHoldings (account_id, stock_code, quantity, average_buy_price)
+       VALUES (?, 'AAPL', 5, 220), (?, 'MSFT', 3, 510), (?, 'NVDA', 10, 180)
+       ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), average_buy_price = VALUES(average_buy_price)`,
+      [leaderAccount.id, leaderAccount.id, teamAccount.id]
+    );
+    await pool.query(
+      `INSERT INTO Orders
+         (account_id, trader_id, stock_code, order_type, price_type, order_quantity,
+          executed_price, executed_quantity, status, completed_at)
+       SELECT ?, ?, 'AAPL', 'BUY', 'MARKET', 5, 220, 5, 'COMPLETED', NOW()
+       WHERE NOT EXISTS (SELECT 1 FROM Orders WHERE account_id = ? AND stock_code = 'AAPL')`,
+      [leaderAccount.id, leaderId, leaderAccount.id]
+    );
+    await pool.query(
+      `INSERT INTO Orders
+         (account_id, trader_id, stock_code, order_type, price_type, order_quantity,
+          executed_price, executed_quantity, status, completed_at)
+       SELECT ?, ?, 'MSFT', 'BUY', 'MARKET', 3, 510, 3, 'COMPLETED', NOW()
+       WHERE NOT EXISTS (SELECT 1 FROM Orders WHERE account_id = ? AND stock_code = 'MSFT')`,
+      [leaderAccount.id, leaderId, leaderAccount.id]
+    );
+    await pool.query(
+      `INSERT INTO Orders
+         (account_id, trader_id, stock_code, order_type, price_type, order_quantity,
+          executed_price, executed_quantity, status, completed_at)
+       SELECT ?, ?, 'NVDA', 'BUY', 'MARKET', 10, 180, 10, 'COMPLETED', NOW()
+       WHERE NOT EXISTS (SELECT 1 FROM Orders WHERE account_id = ? AND stock_code = 'NVDA')`,
+      [teamAccount.id, leaderId, teamAccount.id]
+    );
+    const history = [
+      { daysAgo: 2, equity: 100000, rate: 0 },
+      { daysAgo: 1, equity: 100850, rate: 0.85 },
+      { daysAgo: 0, equity: 101500, rate: 1.5 },
+    ];
+    for (const item of history) {
+      const recordedAt = new Date(Date.now() - item.daysAgo * 86400000).toISOString().slice(0, 10);
+      await pool.query(
+        `INSERT INTO AccountAssetHistories (account_id, recorded_at, total_equity, return_rate)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE total_equity = VALUES(total_equity), return_rate = VALUES(return_rate)`,
+        [leaderAccount.id, recordedAt, item.equity, item.rate]
+      );
+    }
+
+    console.log('[6/7] QA 모델포트폴리오 작성 및 활성화...');
+    const analystId = userIds['dummy.member1@test.com'];
+    let activePortfolio = null;
+    try {
+      activePortfolio = await portfolioService.getActivePortfolio(leaderId);
+    } catch (error) {
+      if (!(error instanceof AppError && error.status === 404)) throw error;
+    }
+    if (!activePortfolio) {
+      const draft = await portfolioService.createPortfolio(analystId, MP_PLAN);
+      await portfolioService.submitPortfolio(analystId, draft.id);
+      for (const email of ['dummy.leader@test.com', 'dummy.member2@test.com']) {
+        await runOrSkip(`찬성 투표(${email})`, () => portfolioService.vote(userIds[email], draft.id, true));
+      }
+      activePortfolio = await portfolioService.getActivePortfolio(leaderId);
+    }
+    console.log(`  ✓ 활성 포트폴리오 id=${activePortfolio.portfolio_id}`);
+
+    console.log('[7/7] 리그 순위 즉시 재계산 (장 시간 무관)...');
     const result = await rankingService.recomputeRankings(season.id);
     console.log(
       `  ✓ 순위 반영 완료 — 개인 ${result.individual.written}건, 팀 ${result.team.written}건`
@@ -198,15 +286,17 @@ const runOrSkip = async (label, fn) => {
 
     // provider=local 계정이라 실제 소셜 로그인으로는 못 들어감 — Postman 등에서 바로 쓸 수 있게
     // 실제 로그인과 동일한 방식(signAccessToken)으로 액세스 토큰을 발급해 출력한다.
-    console.log('\n=== 테스트용 액세스 토큰 (Authorization: Bearer <token>) ===');
-    const tokenRows = [];
-    for (const u of DUMMY_USERS.filter((u) => u.verified)) {
-      const [[row]] = await pool.query('SELECT id, role FROM Users WHERE email = ?', [u.email]);
-      const accessToken = signAccessToken({ userId: row.id, role: row.role });
-      tokenRows.push({ email: u.email, userId: row.id, accessToken });
+    if (process.env.SEED_PRINT_ACCESS_TOKENS === 'true') {
+      console.log('\n=== 테스트용 액세스 토큰 (Authorization: Bearer <token>) ===');
+      const tokenRows = [];
+      for (const u of DUMMY_USERS.filter((u) => u.verified)) {
+        const [[row]] = await pool.query('SELECT id, role FROM Users WHERE email = ?', [u.email]);
+        const accessToken = signAccessToken({ userId: row.id, role: row.role });
+        tokenRows.push({ email: u.email, userId: row.id, accessToken });
+      }
+      console.table(tokenRows.map(({ email, userId }) => ({ email, userId })));
+      tokenRows.forEach(({ email, accessToken }) => console.log(`${email}:\n${accessToken}\n`));
     }
-    console.table(tokenRows.map(({ email, userId }) => ({ email, userId })));
-    tokenRows.forEach(({ email, accessToken }) => console.log(`${email}:\n${accessToken}\n`));
 
     process.exitCode = 0;
   } catch (err) {

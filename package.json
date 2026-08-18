@@ -10,7 +10,9 @@
     "seed:stocks": "node db/seeds/seed-stocks.js",
     "seed:users": "node db/seeds/seed-users.js",
     "seed:demo": "node db/seeds/seed-demo.js",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "seed:main-qa": "node db/seeds/seed-main-qa.js",
+    "cleanup:main-qa": "node db/seeds/cleanup-main-qa.js",
+    "test": "node --test --test-force-exit tests/*.test.js",
     "check:openapi": "node scripts/check-openapi.js"
   },
   "keywords": [],

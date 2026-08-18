@@ -217,6 +217,34 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/auth/qa-session:
+    post:
+      tags: [auth]
+      summary: 메인 환경 QA 로그인 (임시)
+      description: |
+        QA 기간에만 활성화되는 PIN 기반 로그인이다.
+        메인 DB의 전용 더미 계정과 투자 fixture에 접속하며 세션은 8시간 뒤 만료된다.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              properties:
+                pin:
+                  type: string
+                  pattern: '^\\d{6,12}$'
+                  example: '000000'
+      responses:
+        '201': { $ref: '#/components/responses/LoginCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { description: QA PIN 불일치 (`QA_PIN_INVALID`) }
+        '404': { description: QA 로그인 비활성화 (`QA_AUTH_DISABLED`) }
+        '429': { description: QA PIN 요청 한도 초과 (`RATE_LIMITED`) }
+        '503': { description: QA fixture 미준비 (`QA_DATA_NOT_READY`) }
+
   /api/auth/email/send:
     post:
       tags: [auth]
