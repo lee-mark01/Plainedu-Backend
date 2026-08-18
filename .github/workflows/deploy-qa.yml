@@ -70,6 +70,22 @@ jobs:
             docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
               "CREATE DATABASE IF NOT EXISTS plainedu_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; ALTER USER 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; GRANT ALL PRIVILEGES ON plainedu_qa.* TO 'plainedu_qa'@'%'; FLUSH PRIVILEGES;"
 
+            qa_sessions_exists="$(docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -N -uroot -e \
+              "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'plainedu_qa' AND table_name = 'QaSessions';")"
+            partial_qa_schema=0
+            if [ "$qa_sessions_exists" = '1' ]; then
+              qa_migration_recorded="$(docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -N -uroot plainedu_qa -e \
+                "SELECT COUNT(*) FROM migrations WHERE name = '20260817000001-qa-sessions';")"
+              if [ "$qa_migration_recorded" = '0' ]; then
+                partial_qa_schema=1
+              fi
+            fi
+            if [ "$partial_qa_schema" = '1' ]; then
+              printf '%s\n' 'Resetting incomplete initial QA schema'
+              docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
+                "DROP DATABASE plainedu_qa; CREATE DATABASE plainedu_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON plainedu_qa.* TO 'plainedu_qa'@'%'; FLUSH PRIVILEGES;"
+            fi
+
             qa_service_account_json="$(printf '%s' "$QA_FIREBASE_SERVICE_ACCOUNT_B64" | base64 --decode | tr -d '\n')"
             umask 077
             {
