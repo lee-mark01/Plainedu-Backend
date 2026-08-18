@@ -16,12 +16,18 @@ test('QA authentication is disabled unless explicitly enabled', () => {
   assert.deepEqual(createQaConfig({}), {
     enabled: false,
     isQaDeployment: false,
+    authTransport: 'firebase',
     firebaseProjectId: '',
     sessionTtlHours: 8,
     retentionHours: 24,
     qaPinGlobalLimit: 50,
     pinHash: '',
   });
+});
+
+test('QA direct authentication transport is allowed only for the isolated deployment', () => {
+  const config = createQaConfig({ ...enabledEnv, QA_AUTH_TRANSPORT: 'direct' });
+  assert.equal(config.authTransport, 'direct');
 });
 
 test('QA session and retention hours use valid positive environment values', () => {

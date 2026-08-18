@@ -22,6 +22,7 @@ test('QA deployment is manually gated and installs an HTTPS path without touchin
   assert.match(workflow, /DB_NAME=plainedu_qa/);
   assert.match(workflow, /QA_AUTH_ENABLED=true/);
   assert.match(workflow, /QA_DEPLOYMENT_MODE=true/);
+  assert.match(workflow, /QA_AUTH_TRANSPORT=direct/);
   assert.match(workflow, /QA_FIREBASE_PROJECT_ID=plainedu-qa-preview/);
   assert.match(workflow, /git clone "\$production_dir" "\$qa_dir"/);
   assert.doesNotMatch(workflow, /git clone[^\n]+https:\/\/github\.com/);

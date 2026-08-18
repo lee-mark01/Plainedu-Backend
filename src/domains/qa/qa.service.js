@@ -5,6 +5,7 @@ const createQaSessionService = ({
   config,
   repository,
   firebaseAdmin,
+  directAuth,
   verifyPin,
   seedFixtures,
   withTransaction,
@@ -39,6 +40,28 @@ const createQaSessionService = ({
       });
       return seeded;
     });
+
+    if (config.authTransport === 'direct') {
+      try {
+        const tokens = await directAuth.issue({
+          rootUserId: fixture.rootUserId,
+          qaSessionId,
+          expiresAt,
+          email: fixture.email,
+          displayName: fixture.displayName,
+          ipAddress,
+          userAgent,
+        });
+        return { ...tokens, expiresAt: expiresAt.toISOString() };
+      } catch (error) {
+        try {
+          await repository.deleteSession(qaSessionId);
+        } catch (_cleanupError) {
+          await repository.expireSession(qaSessionId, now).catch(() => {});
+        }
+        throw error;
+      }
+    }
 
     try {
       await firebaseAdmin.ensureQaUser({

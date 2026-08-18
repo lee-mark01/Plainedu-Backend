@@ -66,7 +66,6 @@ jobs:
             fi
             test -n "$DB_PASSWORD"
             printf '%s\n' 'Production environment parsed'
-            docker logs --tail 200 plainedu-qa-app >&2 || true
 
             docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot -e \
               "CREATE DATABASE IF NOT EXISTS plainedu_qa CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; ALTER USER 'plainedu_qa'@'%' IDENTIFIED BY '$QA_DB_PASSWORD'; GRANT ALL PRIVILEGES ON plainedu_qa.* TO 'plainedu_qa'@'%'; FLUSH PRIVILEGES;"
@@ -102,6 +101,7 @@ jobs:
                 'FIREBASE_PROJECT_ID=plainedu-qa-preview' \
                 'QA_AUTH_ENABLED=true' \
                 'QA_DEPLOYMENT_MODE=true' \
+                'QA_AUTH_TRANSPORT=direct' \
                 "QA_AUTH_PIN_HASH=$QA_AUTH_PIN_HASH" \
                 'QA_FIREBASE_PROJECT_ID=plainedu-qa-preview' \
                 'QA_SESSION_TTL_HOURS=8' \

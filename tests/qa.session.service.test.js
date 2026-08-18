@@ -5,7 +5,7 @@ const { createQaSessionService } = require('../src/domains/qa/qa.service');
 
 const fixedNow = new Date('2026-08-17T01:00:00.000Z');
 
-const createHarness = ({ enabled = true, pinValid = true, seedError = null, firebaseError = null, firebaseDeleteError = null } = {}) => {
+const createHarness = ({ enabled = true, authTransport = 'firebase', pinValid = true, seedError = null, firebaseError = null, firebaseDeleteError = null, directError = null } = {}) => {
   const calls = [];
   const repository = {
     createSession: async (_executor, value) => calls.push(['session', value]),
@@ -32,10 +32,18 @@ const createHarness = ({ enabled = true, pinValid = true, seedError = null, fire
     if (seedError) throw seedError;
     return { rootUserId: 41, email: 'qa-root@qa.invalid', displayName: 'QA 테스터' };
   };
+  const directAuth = {
+    issue: async (value) => {
+      calls.push(['direct-token', value]);
+      if (directError) throw directError;
+      return { accessToken: 'qa-access', refreshToken: 'qa-refresh', user: { id: value.rootUserId } };
+    },
+  };
   const withTransaction = async (fn) => fn({ name: 'transaction-executor' });
   const service = createQaSessionService({
     config: {
       enabled,
+      authTransport,
       pinHash: 'stored-pin-hash',
       firebaseProjectId: 'plainedu-qa',
       sessionTtlHours: 8,
@@ -43,6 +51,7 @@ const createHarness = ({ enabled = true, pinValid = true, seedError = null, fire
     },
     repository,
     firebaseAdmin,
+    directAuth,
     verifyPin: async (pin, stored) => {
       calls.push(['verify-pin', pin, stored]);
       return pinValid;
@@ -54,6 +63,32 @@ const createHarness = ({ enabled = true, pinValid = true, seedError = null, fire
   });
   return { calls, service };
 };
+
+test('direct QA transport returns session-scoped backend tokens without Firebase provisioning', async () => {
+  const { calls, service } = createHarness({ authTransport: 'direct' });
+
+  const result = await service.createSession('482913', {
+    ipAddress: '127.0.0.1',
+    userAgent: 'qa-test',
+  });
+
+  assert.equal(result.accessToken, 'qa-access');
+  assert.equal(result.refreshToken, 'qa-refresh');
+  assert.equal(result.expiresAt, '2026-08-17T09:00:00.000Z');
+  assert.equal(calls.some(([name]) => name === 'firebase-user'), false);
+  assert.deepEqual(calls.find(([name]) => name === 'direct-token'), [
+    'direct-token',
+    {
+      rootUserId: 41,
+      qaSessionId: '11111111-2222-4333-8444-555555555555',
+      expiresAt: new Date('2026-08-17T09:00:00.000Z'),
+      email: 'qa-root@qa.invalid',
+      displayName: 'QA 테스터',
+      ipAddress: '127.0.0.1',
+      userAgent: 'qa-test',
+    },
+  ]);
+});
 
 test('disabled QA authentication returns 404 before verifying the submitted PIN', async () => {
   const { calls, service } = createHarness({ enabled: false });

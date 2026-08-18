@@ -7,6 +7,7 @@ const createQaConfig = (env = process.env) => {
   const config = {
     enabled: env.QA_AUTH_ENABLED === 'true',
     isQaDeployment: env.QA_DEPLOYMENT_MODE === 'true',
+    authTransport: env.QA_AUTH_TRANSPORT?.trim() || 'firebase',
     firebaseProjectId: env.QA_FIREBASE_PROJECT_ID?.trim() || '',
     sessionTtlHours: positiveNumber(env.QA_SESSION_TTL_HOURS, 8),
     retentionHours: positiveNumber(env.QA_DATA_RETENTION_HOURS, 24),
@@ -16,6 +17,9 @@ const createQaConfig = (env = process.env) => {
 
   if (!config.enabled) return config;
   if (!config.isQaDeployment) throw new Error('QA_DEPLOYMENT_MODE=true is required when QA authentication is enabled');
+  if (!['firebase', 'direct'].includes(config.authTransport)) {
+    throw new Error('QA_AUTH_TRANSPORT must be firebase or direct');
+  }
   if (!config.pinHash) throw new Error('QA_AUTH_PIN_HASH is required when QA authentication is enabled');
   if (!config.firebaseProjectId) {
     throw new Error('QA_FIREBASE_PROJECT_ID is required when QA authentication is enabled');
