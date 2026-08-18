@@ -118,8 +118,10 @@ jobs:
             docker compose -p plainedu-qa -f docker-compose.qa.yml build app
             docker compose -p plainedu-qa -f docker-compose.qa.yml up -d redis
             if ! docker compose -p plainedu-qa -f docker-compose.qa.yml run --rm app npm run migrate; then
-              docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -uroot \
+              docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql --raw -uroot \
                 -e 'SHOW ENGINE INNODB STATUS\G' | sed -n '/LATEST FOREIGN KEY ERROR/,+30p' >&2
+              docker exec -e MYSQL_PWD="$DB_PASSWORD" plainedu-mysql mysql -N -uroot -e \
+                "SELECT table_name, engine, table_collation FROM information_schema.tables WHERE table_schema = 'plainedu_qa' AND table_name IN ('QaSessions','Users','Teams','CommunityPosts','DailyRankings') ORDER BY table_name; SELECT table_name, column_name, column_type, collation_name FROM information_schema.columns WHERE table_schema = 'plainedu_qa' AND (column_name = 'qa_session_id' OR (table_name = 'QaSessions' AND column_name = 'id')) ORDER BY table_name, column_name;" >&2
               exit 1
             fi
             docker compose -p plainedu-qa -f docker-compose.qa.yml up -d app
