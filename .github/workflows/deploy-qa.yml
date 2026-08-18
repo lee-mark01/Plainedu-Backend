@@ -158,12 +158,23 @@ jobs:
             sudo nginx -t
             sudo systemctl reload nginx
 
-            curl --fail --silent --show-error https://api.plainedu.org/qa/api/health >/dev/null
+            qa_healthy=0
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent https://api.plainedu.org/qa/api/health >/dev/null; then
+                qa_healthy=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$qa_healthy" != '1' ]; then
+              docker compose -p plainedu-qa -f docker-compose.qa.yml logs app >&2
+              exit 1
+            fi
             test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
               --header 'content-type: application/json' \
-              --data '{"pin":"invalid"}' \
+              --data '{"pin":"000000"}' \
               https://api.plainedu.org/qa/api/auth/qa-session)" = '401'
             test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
               --header 'content-type: application/json' \
-              --data '{"pin":"invalid"}' \
+              --data '{"pin":"000000"}' \
               https://api.plainedu.org/api/auth/qa-session)" = '404'

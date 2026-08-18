@@ -33,5 +33,7 @@ test('QA deployment is manually gated and installs an HTTPS path without touchin
   assert.doesNotMatch(workflow, /\. "\$production_dir\/\.env"/);
   assert.match(workflow, /location \/qa\//);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:3001\//);
+  assert.match(workflow, /for attempt in \$\(seq 1 30\)/);
+  assert.match(workflow, /--data '\{"pin":"000000"\}'/);
   assert.doesNotMatch(workflow, /seed:demo/);
 });
