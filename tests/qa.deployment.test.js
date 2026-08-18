@@ -27,6 +27,7 @@ test('QA deployment is manually gated and installs an HTTPS path without touchin
   assert.doesNotMatch(workflow, /git clone[^\n]+https:\/\/github\.com/);
   assert.match(workflow, /read_env_value\(\)/);
   assert.match(workflow, /docker exec plainedu-mysql printenv MYSQL_ROOT_PASSWORD/);
+  assert.match(workflow, /SHOW ENGINE INNODB STATUS/);
   assert.doesNotMatch(workflow, /\. "\$production_dir\/\.env"/);
   assert.match(workflow, /location \/qa\//);
   assert.match(workflow, /proxy_pass http:\/\/127\.0\.0\.1:3001\//);
