@@ -23,13 +23,14 @@
 | POST | `/api/auth/kakao` | — | 카카오 로그인. body `{ code }` → 유저 생성/로그인 + access/refresh 토큰 (+개인계좌 자동 생성) |
 | POST | `/api/auth/naver` | — | 네이버 로그인. 동일 흐름 |
 | POST | `/api/auth/google` | — | 구글 로그인. 동일 흐름 |
+| POST | `/api/auth/firebase-token` | — | Firebase ID 토큰을 검증해 백엔드 access/refresh 토큰 발급. body `{ idToken }` |
 | POST | `/api/auth/refresh` | — | body `{ refreshToken }` → access 재발급 |
 | POST | `/api/auth/logout` | — | body `{ refreshToken }` → 무효화 |
 | GET | `/auth/kakao/callback` `/auth/naver/callback` `/auth/google/callback` | — | OAuth 리다이렉트 콜백 (프론트 미경유 테스트용) |
 | POST | `/api/auth/email/send` | 🔒 | 대학교 이메일 인증코드 발송. body `{ email }` → 6자리 코드 메일 발송(Redis TTL 5분). 허용 도메인 외 400 `INVALID_UNIVERSITY_EMAIL` |
 | POST | `/api/auth/email/verify` | 🔒 | 인증코드 확인. body `{ email, code(6자리) }` → `school_is_verified = true`. 만료 400 `CODE_EXPIRED`, 불일치 `CODE_MISMATCH` |
 
-로컬(이메일/비번) 로그인은 미구현 — OAuth 3종만 존재. 위 이메일 인증은 로그인이 아니라 **학교 인증(AUTH-07)** 용이다.
+로컬(이메일/비번) 로그인은 미구현이다. 기존 Firebase 소셜 로그인을 사용하는 앱은 `/firebase-token` 브리지를 사용한다. 위 이메일 인증은 로그인이 아니라 **학교 인증(AUTH-07)** 용이다.
 
 ## user — 유저 (`/api/users`)
 
