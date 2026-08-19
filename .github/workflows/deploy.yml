@@ -5,7 +5,12 @@ on:
     branches: [main]
 
 jobs:
+  # 배포 전 게이트. ci.yml을 그대로 호출하므로 테스트 정의가 한 곳에만 존재한다.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: test          # ← 테스트가 빨간불이면 여기서 멈춘다 (EC2에 손도 안 댐)
     runs-on: ubuntu-latest
 
     steps:

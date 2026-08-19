@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+  # deploy.yml이 배포 직전에 이 워크플로를 그대로 호출한다.
+  # 테스트 정의를 한 곳에만 두려고 workflow_call을 쓴다 (복붙 사본이 생기면 반드시 갈라진다).
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # 테스트 6개가 실제 MySQL/Redis를 쓴다 (트랜잭션 열고 롤백하는 방식).
+    # 매 실행마다 빈 컨테이너로 시작하므로 dev DB를 건드리지 않는다.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: plainedu_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    # .env가 없는 환경이라 여기서 주입한다. dotenv.config()는 파일이 없으면 조용히 통과.
+    # 외부 API 키(TWELVEDATA·SMTP·OAuth)는 테스트가 타지 않으므로 넣지 않는다.
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ci
+      DB_NAME: plainedu_test
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_ACCESS_SECRET: ci-test-secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 운영(Dockerfile)과 동일한 20으로 맞춘다 — 로컬 22에서만 되는 코드를 걸러낸다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: OpenAPI 스펙 드리프트 검사
+        run: npm run check:openapi
+
+      - name: 스키마 + 더미 데이터
+        run: |
+          npm run migrate
+          npm run seed:users
+          npm run seed:stocks:core
+
+      - name: 테스트
+        run: npm test
