@@ -8,6 +8,7 @@
     "migrate": "node -r dotenv/config node_modules/db-migrate/bin/db-migrate up --config database.json --migrations-dir db/migrations",
     "migrate:down": "node -r dotenv/config node_modules/db-migrate/bin/db-migrate down --config database.json --migrations-dir db/migrations",
     "seed:stocks": "node db/seeds/seed-stocks.js",
+    "seed:stocks:core": "node db/seeds/seed-stocks-core.js",
     "seed:users": "node db/seeds/seed-users.js",
     "seed:demo": "node db/seeds/seed-demo.js",
     "test": "node --test",

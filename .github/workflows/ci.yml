@@ -68,6 +68,7 @@ jobs:
         run: |
           npm run migrate
           npm run seed:users
+          npm run seed:stocks:core
 
       - name: 테스트
         run: npm test
