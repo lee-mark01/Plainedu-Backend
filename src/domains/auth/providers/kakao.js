@@ -4,12 +4,16 @@ const AppError = require('../../../errors/AppError');
 const KAKAO_TOKEN_URL = 'https://kauth.kakao.com/oauth/token';
 const KAKAO_USERINFO_URL = 'https://kapi.kakao.com/v2/user/me';
 
-const exchangeCode = async (code) => {
+// redirectUri: 프론트가 인가 요청에 쓴 콜백 주소.
+// 카카오는 인가 때와 교환 때의 redirect_uri가 정확히 같아야 통과시킨다 (인가코드를 탈취당해도
+// 다른 곳에서 교환되지 못하게 하는 장치). 인가는 프론트가 자기 주소로 하므로 그 값을 받아 넘긴다.
+// 없으면 env 기본값 - app.js의 GET /auth/kakao/callback(브라우저/Swagger 확인용)이 그 경로다.
+const exchangeCode = async (code, { redirectUri } = {}) => {
   const params = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: process.env.KAKAO_CLIENT_ID,
     client_secret: process.env.KAKAO_CLIENT_SECRET,
-    redirect_uri: process.env.KAKAO_REDIRECT_URI,
+    redirect_uri: redirectUri || process.env.KAKAO_REDIRECT_URI,
     code,
   });
   try {

@@ -16,13 +16,13 @@ const labelOf = (p) => PROVIDER_LABEL[p] || p;
 const SLIDING_TTL_MS  = 7  * 24 * 60 * 60 * 1000;  // 7일 (미사용 시 만료)
 const ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1000;  // 90일 (절대 만료)
 
-const oauthLogin = async (provider, code, { ipAddress, userAgent, state }) => {
+const oauthLogin = async (provider, code, { ipAddress, userAgent, state, redirectUri }) => {
   if (!code) throw new AppError('인가 코드가 없습니다.', 400);
 
   const handler = providers[provider];
   if (!handler) throw new AppError('지원하지 않는 로그인 방식입니다.', 400);
 
-  const providerToken = await handler.exchangeCode(code, { state });
+  const providerToken = await handler.exchangeCode(code, { state, redirectUri });
   const { snsId, email, nickname } = await handler.getProfile(providerToken);
 
   let user = await authRepository.findUserBySnsId(provider, snsId);

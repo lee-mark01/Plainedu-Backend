@@ -4,12 +4,13 @@ const AppError = require('../../../errors/AppError');
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
-const exchangeCode = async (code) => {
+// 카카오와 동일하게 인가/교환의 redirect_uri가 일치해야 한다 (kakao.js 주석 참조).
+const exchangeCode = async (code, { redirectUri } = {}) => {
   const params = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+    redirect_uri: redirectUri || process.env.GOOGLE_REDIRECT_URI,
     code,
   });
   try {
