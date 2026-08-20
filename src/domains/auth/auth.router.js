@@ -13,7 +13,6 @@ const loginLimit = rateLimit('login', 60, 300);
 router.post('/kakao', loginLimit, authController.kakaoLogin);
 router.post('/naver', loginLimit, authController.naverLogin);
 router.post('/google', loginLimit, authController.googleLogin);
-router.post('/firebase-token', loginLimit, authController.firebaseTokenLogin);
 router.post('/refresh', rateLimit('refresh', 60, 300), authController.refresh);
 router.post('/logout', authController.logout);
 
