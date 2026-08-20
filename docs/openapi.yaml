@@ -3062,7 +3062,6 @@ components:
           type: string
           description: 소셜 제공사가 발급한 인가 코드
           example: 'kQx8...'
-<<<<<<< HEAD
         redirect_uri:
           type: string
           description: |
@@ -3074,16 +3073,6 @@ components:
             `GET /auth/{provider}/callback`로 직접 확인할 때의 경로다.
             네이버는 교환 시 이 값을 요구하지 않아 보내도 무시된다.
           example: 'https://app.plainedu.org/auth/callback'
-    FirebaseTokenRequest:
-      type: object
-      required: [idToken]
-      properties:
-        idToken:
-          type: string
-          description: Plain edu Firebase 프로젝트가 발급한 ID 토큰
-          example: 'eyJhbGciOiJSUzI1NiIs...'
-=======
->>>>>>> origin/develop
     RefreshTokenRequest:
       type: object
       required: [refreshToken]
