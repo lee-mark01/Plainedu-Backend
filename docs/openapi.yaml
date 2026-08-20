@@ -200,32 +200,6 @@ paths:
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/ServerError' }
 
-  /api/auth/firebase-token:
-    post:
-      tags: [auth]
-      summary: Firebase 세션을 백엔드 토큰으로 교환
-      description: |
-        Plain edu Firebase 프로젝트가 발급한 ID 토큰을 서버에서 검증하고 백엔드 사용자 및
-        개인 가상계좌를 보장한 뒤 access/refresh 토큰 쌍을 발급한다. 기존 이메일 사용자가
-        있으면 중복 계정을 만들지 않고 해당 사용자에 연결한다.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/FirebaseTokenRequest' }
-      responses:
-        '200': { $ref: '#/components/responses/LoginOk' }
-        '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401':
-          description: Firebase 토큰이 유효하지 않음 (`FIREBASE_TOKEN_INVALID`)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
-        '500': { $ref: '#/components/responses/ServerError' }
-
   /api/auth/logout:
     post:
       tags: [auth]
@@ -2885,14 +2859,6 @@ components:
           type: string
           description: 소셜 제공사가 발급한 인가 코드
           example: 'kQx8...'
-    FirebaseTokenRequest:
-      type: object
-      required: [idToken]
-      properties:
-        idToken:
-          type: string
-          description: Plain edu Firebase 프로젝트가 발급한 ID 토큰
-          example: 'eyJhbGciOiJSUzI1NiIs...'
     RefreshTokenRequest:
       type: object
       required: [refreshToken]
