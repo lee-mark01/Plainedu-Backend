@@ -13,6 +13,7 @@ const findProfileById = async (id) => {
   const [rows] = await pool.query(
     `SELECT u.id, u.email, u.nickname, u.role, u.position, u.provider,
             u.school_id, u.school_is_verified, u.created_at,
+            u.phone, u.phone_verified_at,
             s.school_name,
             t.id AS team_id, t.name AS team_name,
             tm.role AS team_role,
@@ -52,6 +53,20 @@ const updateSchool = async (id, schoolId, executor = pool) => {
   await executor.query('UPDATE Users SET school_id = ?, school_is_verified = FALSE WHERE id = ?', [schoolId, id]);
 };
 
+// 인증을 마친(phone_verified_at NOT NULL) 계정만 본다. 미인증 번호는 점유로 치지 않는다 -
+// 발송만 하고 이탈한 사람이 번호를 영구히 막아버리면 정상 가입자가 들어올 수 없다.
+const findVerifiedByPhone = async (phone) => {
+  const [rows] = await pool.query(
+    'SELECT id FROM Users WHERE phone = ? AND phone_verified_at IS NOT NULL LIMIT 1',
+    [phone]
+  );
+  return rows[0] || null;
+};
+
+const updatePhoneVerified = async (id, phone) => {
+  await pool.query('UPDATE Users SET phone = ?, phone_verified_at = NOW() WHERE id = ?', [phone, id]);
+};
+
 const updateSchoolVerified = async (id, verified) => {
   await pool.query('UPDATE Users SET school_is_verified = ? WHERE id = ?', [verified, id]);
 };
@@ -62,4 +77,5 @@ const deleteUser = async (id) => {
 
 module.exports = {
   findById, findProfileById, updateNickname, updatePosition, updateSchool, updateSchoolVerified, deleteUser,
+  findVerifiedByPhone, updatePhoneVerified,
 };

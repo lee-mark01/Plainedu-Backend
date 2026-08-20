@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS Users (
   email               VARCHAR(255) NOT NULL,
   password            VARCHAR(255) NULL,                                  -- 소셜 로그인 시 NULL
   nickname            VARCHAR(50)  NOT NULL,
+  phone               VARCHAR(20)  NULL,                                  -- 하이픈 없는 숫자만
+  phone_verified_at   TIMESTAMP    NULL,                                  -- 미인증이면 NULL
   role                ENUM('USER','ADMIN') NOT NULL DEFAULT 'USER',
   position            ENUM('TRADER','ANALYST','NONE') NOT NULL DEFAULT 'NONE',
   provider            VARCHAR(20)  NOT NULL DEFAULT 'local',              -- local, kakao, naver, google
@@ -53,6 +55,8 @@ CREATE TABLE IF NOT EXISTS Users (
   UNIQUE KEY uq_users_email (email),
   INDEX idx_users_school_id (school_id),
   INDEX idx_users_provider_sns (provider, sns_id),
+  INDEX idx_users_phone (phone),                                          -- 번호 중복 인증 검사용
+
   CONSTRAINT fk_users_school
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -94,6 +98,22 @@ CREATE TABLE IF NOT EXISTS school_VerificationLogs (
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_school_verif_admin
     FOREIGN KEY (admin_id) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 1-6. UserAgreements (약관/개인정보/마케팅 동의)
+-- 현재 상태만 보관한다(user_id+type UNIQUE). agreed_at은 철회해도 지우지 않는다 —
+-- "언제 동의했었는지"가 증빙의 핵심이고 철회 시각은 updated_at이 갖는다.
+CREATE TABLE IF NOT EXISTS UserAgreements (
+  id          INT       NOT NULL AUTO_INCREMENT,
+  user_id     INT       NOT NULL,
+  type        ENUM('TERMS','PRIVACY','MARKETING') NOT NULL,
+  is_agreed   BOOLEAN   NOT NULL DEFAULT FALSE,
+  agreed_at   TIMESTAMP NULL,                                       -- 마지막으로 동의한 시각
+  updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ua_user_type (user_id, type),
+  CONSTRAINT fk_ua_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================

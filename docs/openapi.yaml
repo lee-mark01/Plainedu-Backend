@@ -90,6 +90,15 @@ paths:
       description: |
         인가 코드를 카카오 토큰으로 교환해 프로필을 조회하고, 가입/로그인 후 토큰 쌍을 발급한다.
         로그인마다 개인 가상계좌 존재를 보장한다(없으면 생성).
+
+        **연동 순서**
+        1. 프론트가 카카오 인가 페이지로 이동 (`redirect_uri` = 프론트 콜백 주소)
+        2. 카카오가 그 주소로 `code`를 붙여 되돌려보냄
+        3. 프론트가 `code` + 1에서 쓴 `redirect_uri`를 이 API로 POST
+        4. 서버가 카카오에 교환 요청 -> 프로필 조회 -> 가입/로그인 -> **서버 토큰 쌍** 발급
+
+        응답의 `accessToken`/`refreshToken`은 **이 서버가 발급한 것**이다.
+        카카오 토큰은 프로필 조회에만 쓰고 버리며 응답에 포함되지 않는다.
       security: []
       requestBody:
         required: true
@@ -99,7 +108,13 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400':
+          description: |
+            인가 코드가 유효하지 않음. **가장 흔한 원인은 `redirect_uri` 불일치**로,
+            인가 요청에 쓴 값과 문자열이 완전히 같아야 한다(슬래시·포트·http/https 포함).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '403':
           description: 카카오 이메일 제공 미동의 (`EMAIL_REQUIRED`)
           content:
@@ -117,6 +132,12 @@ paths:
     post:
       tags: [auth]
       summary: 네이버 로그인
+      description: |
+        카카오와 동일한 흐름이나 CSRF 방지용 `state`를 함께 보내야 한다.
+        **네이버는 토큰 교환 시 `redirect_uri`를 요구하지 않아** 보내도 무시된다
+        (`state`로 검증). 다른 provider와 동일하게 보내도 무방하다.
+
+        응답의 `accessToken`/`refreshToken`은 **이 서버가 발급한 것**이다.
       security: []
       requestBody:
         required: true
@@ -134,7 +155,13 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400':
+          description: |
+            인가 코드가 유효하지 않음. **가장 흔한 원인은 `redirect_uri` 불일치**로,
+            인가 요청에 쓴 값과 문자열이 완전히 같아야 한다(슬래시·포트·http/https 포함).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '409':
           description: 다른 소셜 계정으로 이미 가입됨 (`PROVIDER_CONFLICT`)
           content:
@@ -147,6 +174,17 @@ paths:
     post:
       tags: [auth]
       summary: 구글 로그인
+      description: |
+        카카오와 동일한 흐름. 구글도 인가/교환의 `redirect_uri`가 일치해야 한다.
+
+        **연동 순서**
+        1. 프론트가 구글 인가 페이지로 이동 (`redirect_uri` = 프론트 콜백 주소)
+        2. 구글이 그 주소로 `code`를 붙여 되돌려보냄
+        3. 프론트가 `code` + 1에서 쓴 `redirect_uri`를 이 API로 POST
+        4. 서버가 구글에 교환 요청 -> 프로필 조회 -> 가입/로그인 -> **서버 토큰 쌍** 발급
+
+        응답의 `accessToken`/`refreshToken`은 **이 서버가 발급한 것**이다.
+        구글 토큰은 프로필 조회에만 쓰고 버리며 응답에 포함되지 않는다.
       security: []
       requestBody:
         required: true
@@ -156,7 +194,13 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400':
+          description: |
+            인가 코드가 유효하지 않음. **가장 흔한 원인은 `redirect_uri` 불일치**로,
+            인가 요청에 쓴 값과 문자열이 완전히 같아야 한다(슬래시·포트·http/https 포함).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '409':
           description: 다른 소셜 계정으로 이미 가입됨 (`PROVIDER_CONFLICT`)
           content:
@@ -350,6 +394,111 @@ paths:
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   # ───────────────────────────── user ─────────────────────────────
+  /api/auth/phone/send:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 발송
+      description: |
+        Solapi로 6자리 인증번호를 SMS 발송한다. 번호는 하이픈이 있어도 되며 서버가 숫자만 남긴다.
+
+        **문자는 건당 과금이라 이중으로 막는다.**
+        - 레이트리밋: 유저당 시간당 3통 (`429 RATE_LIMITED`)
+        - 재발송 쿨다운: 직전 발송 후 30초 (`429 RESEND_COOLDOWN`, `message`에 남은 초)
+
+        이미 **다른 계정이 인증을 마친 번호**면 발송 전에 `409`로 거절한다
+        (문자를 보내고 나서 실패시키면 비용은 나가고 유저는 코드를 받은 채 막힌다).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: 하이픈 포함/미포함 모두 허용
+                  example: '010-1234-5678'
+      responses:
+        '200':
+          description: 발송 성공. 쿨다운·만료 초를 함께 반환해 카운트다운에 쓴다.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      message: { type: string, example: 인증번호를 발송했습니다. }
+                      data:
+                        type: object
+                        properties:
+                          cooldownSeconds: { type: integer, example: 30 }
+                          expiresInSeconds: { type: integer, example: 180 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: |
+            한도 초과(`RATE_LIMITED`) 또는 재발송 쿨다운(`RESEND_COOLDOWN`).
+            `code`로 구분한다 - 쿨다운은 `message`에 남은 초가 들어 있다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: SMS 발송 실패 (`SMS_SEND_FAILED`). 발신번호 미등록·잔액 부족 등.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/phone/verify:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 확인
+      description: |
+        일치하면 `Users.phone`과 `phone_verified_at`을 기록한다. 코드 TTL은 3분이며
+        성공 시 즉시 폐기된다. 상태는 `GET /api/users/me`의 `phone`으로 확인한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, example: '010-1234-5678' }
+                code: { type: string, example: '123456' }
+      responses:
+        '200':
+          description: 인증 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      message: { type: string, example: 휴대폰 인증이 완료되었습니다. }
+        '400':
+          description: |
+            코드 만료(`CODE_EXPIRED`) 또는 불일치(`CODE_MISMATCH`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/users/me:
     get:
       tags: [user]
@@ -446,6 +595,60 @@ paths:
                 message: 회원 탈퇴가 완료되었습니다.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/me/agreements:
+    patch:
+      tags: [user]
+      summary: 약관/개인정보/마케팅 동의
+      description: |
+        온보딩 2단계이자 마이페이지 수신 설정. **보낸 항목만 갱신한다**(부분 수정).
+
+        **온보딩 순서**: 로그인 -> **동의** -> 학교 선택 -> 대학 이메일 인증 -> 팀 생성/가입.
+        개인 모드는 동의까지만 하면 전부 사용할 수 있고, 학교/인증은 팀 진입 시에만 필요하다.
+
+        진행 상태는 `GET /api/users/me`의 `agreements`로 판정한다 (별도 조회 API 없음).
+
+        `terms`/`privacy`는 **`true`만 받는다.** 철회는 곧 서비스 이용 중단이라
+        `DELETE /api/users/me`(탈퇴) 소관이며, 여기로 `false`를 보내면 `400`이다.
+        `marketing`은 자유롭게 켜고 끌 수 있다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                terms: { type: boolean, enum: [true], description: 서비스 이용약관(필수), example: true }
+                privacy: { type: boolean, enum: [true], description: 개인정보 처리방침(필수), example: true }
+                marketing: { type: boolean, description: 마케팅 수신(선택), example: false }
+      responses:
+        '200':
+          description: 갱신 후 전체 동의 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          agreements:
+                            type: object
+                            properties:
+                              terms: { type: boolean, example: true }
+                              privacy: { type: boolean, example: true }
+                              marketing: { type: boolean, example: false }
+        '400':
+          description: |
+            보낸 항목이 없거나, 필수 동의에 `false`를 보냄
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/users/attendance/check-in:
@@ -2885,6 +3088,17 @@ components:
           type: string
           description: 소셜 제공사가 발급한 인가 코드
           example: 'kQx8...'
+        redirect_uri:
+          type: string
+          description: |
+            인가 요청에 사용한 콜백 주소. **인가 때 쓴 값과 문자열이 정확히 일치해야 한다**
+            (슬래시 유무·포트·http/https 포함). 카카오/구글이 인가와 교환의 값을 대조하므로
+            다르면 `400`으로 거부된다.
+
+            생략하면 서버 기본값(`*_REDIRECT_URI` env)을 사용한다 - 브라우저에서
+            `GET /auth/{provider}/callback`로 직접 확인할 때의 경로다.
+            네이버는 교환 시 이 값을 요구하지 않아 보내도 무시된다.
+          example: 'https://app.plainedu.org/auth/callback'
     FirebaseTokenRequest:
       type: object
       required: [idToken]
@@ -2946,6 +3160,23 @@ components:
           properties:
             id: { type: integer, example: 42 }
             name: { type: string, example: 연세대학교 }
+            is_verified: { type: boolean, example: true }
+        agreements:
+          type: object
+          description: |
+            약관/개인정보/마케팅 동의 상태. **동의한 적 없는 항목도 `false`로 항상 내려간다**
+            (키가 빠지지 않으므로 프론트가 존재 여부를 확인할 필요 없음).
+            `terms`와 `privacy`가 모두 `true`여야 서비스 이용 가능 상태다.
+          properties:
+            terms: { type: boolean, description: 서비스 이용약관(필수), example: true }
+            privacy: { type: boolean, description: 개인정보 처리방침(필수), example: true }
+            marketing: { type: boolean, description: 마케팅 수신(선택), example: false }
+        phone:
+          type: object
+          nullable: true
+          description: 휴대폰 미등록 시 `null`. 번호는 하이픈 없는 숫자로 저장된다.
+          properties:
+            number: { type: string, example: '01012345678' }
             is_verified: { type: boolean, example: true }
         team:
           type: object
