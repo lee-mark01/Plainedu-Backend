@@ -305,6 +305,7 @@ paths:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 발송은 시간당 3회. }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/email/verify:
@@ -325,6 +326,77 @@ paths:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 5분당 10회. }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/phone/send:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 발송
+      description: |
+        입력한 번호로 6자리 인증번호를 SMS 발송한다. 하이픈은 서버가 제거하므로
+        `010-1234-5678`과 `01012345678` 중 무엇을 보내도 된다.
+
+        응답의 `cooldownSeconds`(재발송까지 남은 초)와 `expiresInSeconds`(인증번호 유효시간)로
+        프론트 타이머를 띄우면 된다. 쿨다운 중 재요청하면 `429 RESEND_COOLDOWN`이고,
+        메시지에 남은 초가 담긴다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: '01012345678' }
+      responses:
+        '200':
+          description: 발송 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          cooldownSeconds: { type: integer, example: 30 }
+                          expiresInSeconds: { type: integer, example: 180 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`) }
+        '429': { description: 재발송 쿨다운(`RESEND_COOLDOWN`) 또는 요청 한도 초과(`RATE_LIMITED`). 발송은 시간당 3회. }
+        '502': { description: SMS 발송 실패 (`SMS_SEND_FAILED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/phone/verify:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 확인
+      description: |
+        인증번호가 맞으면 번호를 계정에 저장한다. 저장 결과는 `GET /api/users/me`의
+        `phone` 필드로 확인한다.
+
+        실패 사유는 `code`로 구분된다 — `CODE_EXPIRED`(만료·미발송),
+        `CODE_MISMATCH`(불일치), `PHONE_ALREADY_USED`(다른 계정이 선점).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, example: '01012345678' }
+                code: { type: string, pattern: '^\\d{6}$' }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '400': { description: 인증번호 만료(`CODE_EXPIRED`) 또는 불일치(`CODE_MISMATCH`) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`) }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 5분당 10회. }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/logout:
@@ -474,6 +546,51 @@ paths:
                 message: 회원 탈퇴가 완료되었습니다.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/me/agreements:
+    patch:
+      tags: [user]
+      summary: 약관·개인정보·마케팅 동의 저장
+      description: |
+        온보딩 동의 화면과 마이페이지 설정이 함께 쓴다. **보낸 항목만 갱신하는 부분 수정**이라
+        마케팅만 끄는 요청도 그대로 보내면 된다.
+
+        동의 시각과 동의 당시의 약관 버전은 서버가 함께 기록한다.
+
+        조회용 API는 따로 없다 — `GET /api/users/me`의 `agreements` 필드가 담당한다.
+        온보딩 진행 판정이 한 번의 호출로 끝나야 해서다.
+
+        필수 항목(`terms`, `privacy`)은 `true`만 받는다. 가입 상태에서 필수 동의를 철회한
+        모호한 계정을 만들지 않기 위해서이며, 철회는 `DELETE /api/users/me`(탈퇴) 소관이다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                terms: { type: boolean, enum: [true], description: 서비스 이용약관 (필수) }
+                privacy: { type: boolean, enum: [true], description: 개인정보 처리방침 (필수) }
+                marketing: { type: boolean, description: 마케팅 수신 (선택, 철회 가능) }
+              example:
+                terms: true
+                privacy: true
+                marketing: false
+      responses:
+        '200':
+          description: 갱신된 전체 동의 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Agreements' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/users/attendance/check-in:
@@ -2856,6 +2973,16 @@ components:
             position:
               allOf: [{ $ref: '#/components/schemas/Position' }]
               nullable: true
+    Agreements:
+      type: object
+      description: |
+        약관 동의 상태. 저장된 적 없는 항목은 `false`로 채워져 항상 세 키가 모두 내려온다 —
+        `undefined`가 섞이면 온보딩 분기가 갈린다.
+      properties:
+        terms: { type: boolean, example: true }
+        privacy: { type: boolean, example: true }
+        marketing: { type: boolean, example: false }
+
     MyProfile:
       type: object
       properties:
@@ -2874,6 +3001,16 @@ components:
           properties:
             id: { type: integer, example: 42 }
             name: { type: string, example: 연세대학교 }
+            is_verified: { type: boolean, example: true }
+        agreements:
+          allOf: [{ $ref: '#/components/schemas/Agreements' }]
+          description: 동의한 적 없는 항목도 `false`로 항상 세 키가 모두 내려온다.
+        phone:
+          type: object
+          nullable: true
+          description: 번호 미등록 시 `null`
+          properties:
+            number: { type: string, example: '01012345678' }
             is_verified: { type: boolean, example: true }
         team:
           type: object
