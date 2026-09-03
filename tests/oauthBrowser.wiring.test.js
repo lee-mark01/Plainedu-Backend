@@ -44,3 +44,11 @@ test('환경변수 예시는 대소문자가 일관된 네이버 키와 백엔�
   assert.match(source, /^KAKAO_REDIRECT_URI=https:\/\/api\.plainedu\.org\/auth\/kakao\/callback$/m);
   assert.doesNotMatch(source, /^Naver_/m);
 });
+
+test('프로덕션 배포는 수동 재실행과 인증 계약 사전검사를 제공한다', () => {
+  const workflow = read('.github/workflows/deploy.yml');
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /npm run check:openapi/);
+  assert.match(workflow, /node --test[^\n]*oauthBrowser\.service\.test\.js[^\n]*oauthBrowser\.wiring\.test\.js/);
+});

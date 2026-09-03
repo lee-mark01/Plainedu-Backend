@@ -1,6 +1,7 @@
 name: Deploy to EC2
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -9,6 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Auth Contract
+        run: |
+          npm run check:openapi
+          node --test --test-force-exit tests/oauthBrowser.service.test.js tests/oauthBrowser.wiring.test.js
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         env:
