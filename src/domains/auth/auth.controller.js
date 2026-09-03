@@ -4,12 +4,65 @@ const accountService = require('../account/account.service');
 const tokenTools = require('../../utils/jwt');
 const { verifyFirebaseIdToken } = require('./firebaseToken.verifier');
 const { createFirebaseTokenService } = require('./firebaseToken.service');
+const redis = require('../../config/redis');
+const {
+  buildFrontendRedirect,
+  createOAuthBrowserService,
+} = require('./oauthBrowser.service');
 
 const firebaseTokenService = createFirebaseTokenService({
   repository: authRepository,
   accountService,
   tokenTools,
 });
+
+const oauthBrowserService = createOAuthBrowserService({
+  store: redis,
+  oauthLogin: authService.oauthLogin,
+});
+
+const createOAuthStart = (provider) => async (req, res, next) => {
+  try {
+    const { authorizationUrl } = await oauthBrowserService.createAuthorization(
+      provider,
+      req.query.return_to,
+    );
+    res.redirect(302, authorizationUrl);
+  } catch (err) {
+    next(err);
+  }
+};
+
+const createOAuthCallback = (provider) => async (req, res, next) => {
+  try {
+    const result = await oauthBrowserService.consumeCallback(provider, req.query, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    res.redirect(302, buildFrontendRedirect(result.returnTo, result));
+  } catch (err) {
+    next(err);
+  }
+};
+
+const kakaoStart = createOAuthStart('kakao');
+const naverStart = createOAuthStart('naver');
+const kakaoCallback = createOAuthCallback('kakao');
+const naverCallback = createOAuthCallback('naver');
+
+const oauthTicket = async (req, res, next) => {
+  try {
+    const { accessToken, refreshToken, user, isNew } = await oauthBrowserService.consumeTicket(
+      req.body?.ticket,
+    );
+    res.status(isNew ? 201 : 200).json({
+      success: true,
+      data: { accessToken, refreshToken, user },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 const kakaoLogin = async (req, res, next) => {
   try {
@@ -112,4 +165,16 @@ const logout = async (req, res, next) => {
   }
 };
 
-module.exports = { kakaoLogin, naverLogin, googleLogin, firebaseTokenLogin, refresh, logout };
+module.exports = {
+  kakaoStart,
+  naverStart,
+  kakaoCallback,
+  naverCallback,
+  oauthTicket,
+  kakaoLogin,
+  naverLogin,
+  googleLogin,
+  firebaseTokenLogin,
+  refresh,
+  logout,
+};

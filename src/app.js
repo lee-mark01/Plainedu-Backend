@@ -27,13 +27,10 @@ app.use(cors());
 app.use(express.json());
 
 // 카카오 OAuth 리다이렉트 콜백 (KAKAO_REDIRECT_URI 대응)
-app.get('/auth/kakao/callback', authController.kakaoLogin);
+app.get('/auth/kakao/callback', authController.kakaoCallback);
 
 // 네이버 OAuth 리다이렉트 콜백 (NAVER_REDIRECT_URI 대응)
-app.get('/auth/naver/callback', authController.naverLogin);
-
-// 구글 OAuth 리다이렉트 콜백 (GOOGLE_REDIRECT_URI 대응)
-app.get('/auth/google/callback', authController.googleLogin);
+app.get('/auth/naver/callback', authController.naverCallback);
 
 // 라우터 연결
 app.use('/api/auth', authRouter);

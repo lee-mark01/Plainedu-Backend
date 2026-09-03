@@ -18,7 +18,6 @@ const EXPANDED = {
   'GET /auth/:provider/callback': [
     'GET /auth/kakao/callback',
     'GET /auth/naver/callback',
-    'GET /auth/google/callback',
   ],
 };
 

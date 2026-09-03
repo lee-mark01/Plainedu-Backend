@@ -191,6 +191,28 @@ test('공급자가 거절하면 프로필 교환 없이 안전한 오류만 프�
   });
 });
 
+test('공급자 token 또는 프로필 교환 실패는 내부 메시지 없이 안정적인 오류 코드로 바꾼다', async () => {
+  const { service } = createService({
+    oauthLogin: async () => {
+      const error = new Error('client_secret and upstream response must stay private');
+      error.code = 'EMAIL_REQUIRED';
+      throw error;
+    },
+  });
+  await service.createAuthorization('kakao', 'https://www.plainedu.org/auth/callback');
+
+  const completed = await service.consumeCallback(
+    'kakao',
+    { code: 'provider-code', state: 'state-token' },
+    {},
+  );
+
+  assert.deepEqual(completed, {
+    returnTo: 'https://www.plainedu.org/auth/callback',
+    error: 'EMAIL_REQUIRED',
+  });
+});
+
 test('프론트 리다이렉트에는 ticket 또는 오류 코드만 fragment로 포함한다', () => {
   assert.equal(
     buildFrontendRedirect('https://www.plainedu.org/auth/callback', { ticket: 'opaque-ticket' }),
@@ -205,4 +227,3 @@ test('프론트 리다이렉트에는 ticket 또는 오류 코드만 fragment로
     { ticket: 'opaque-ticket', accessToken: 'must-not-leak' },
   ).includes('must-not-leak'), false);
 });
-

@@ -14,6 +14,9 @@ router.post('/kakao', authController.kakaoLogin);
 router.post('/naver', authController.naverLogin);
 router.post('/google', authController.googleLogin);
 router.post('/firebase-token', authController.firebaseTokenLogin);
+router.get('/kakao/start', authController.kakaoStart);
+router.get('/naver/start', authController.naverStart);
+router.post('/oauth-ticket', authController.oauthTicket);
 router.post(
   '/qa-session',
   requireMainQaEnabled,

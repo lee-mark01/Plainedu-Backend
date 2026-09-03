@@ -8,6 +8,7 @@ const ALLOWED_RETURN_TO = new Set([
   'https://plainedu.org/auth/callback',
   'plainedu://auth/callback',
 ]);
+const SAFE_CALLBACK_ERRORS = new Set(['EMAIL_REQUIRED', 'PROVIDER_CONFLICT']);
 
 const DEFAULT_PROVIDER_CONFIG = () => ({
   kakao: {
@@ -107,11 +108,19 @@ const createOAuthBrowserService = ({
       return { returnTo, error: 'OAUTH_CODE_MISSING' };
     }
 
-    const session = await oauthLogin(provider, code, {
-      ipAddress: context?.ipAddress,
-      userAgent: context?.userAgent,
-      state,
-    });
+    let session;
+    try {
+      session = await oauthLogin(provider, code, {
+        ipAddress: context?.ipAddress,
+        userAgent: context?.userAgent,
+        state,
+      });
+    } catch (error) {
+      return {
+        returnTo,
+        error: SAFE_CALLBACK_ERRORS.has(error?.code) ? error.code : 'OAUTH_LOGIN_FAILED',
+      };
+    }
     const ticket = randomToken();
     await store.set(
       `oauth:ticket:${ticket}`,
@@ -143,4 +152,3 @@ module.exports = {
   buildFrontendRedirect,
   createOAuthBrowserService,
 };
-
