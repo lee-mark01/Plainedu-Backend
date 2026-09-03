@@ -155,6 +155,9 @@ const upsertDailyRankings = async (rows, executor = pool) => {
       r.target_type,
       r.school_group ?? null, // 그룹 리그 내 순위임을 명시 (과거 통합 시절 행은 NULL)
       r.target_id,
+      // 확정 시점 이름 스냅샷. 지금은 TEAM만 채운다 — 팀이 해체되면 Teams 조인으로는
+      // 이름을 찾을 수 없는데 과거 순위표는 남아야 하기 때문. 그 외 보드는 NULL.
+      r.target_name ?? null,
       r.rank_date,
       r.rank_position,
       r.return_rate,
@@ -164,10 +167,11 @@ const upsertDailyRankings = async (rows, executor = pool) => {
     ]);
     await executor.query(
       `INSERT INTO DailyRankings
-         (season_id, target_type, school_group, target_id, rank_date, rank_position, return_rate, final_score, participation_rate, alignment_score)
+         (season_id, target_type, school_group, target_id, target_name, rank_date, rank_position, return_rate, final_score, participation_rate, alignment_score)
        VALUES ?
        ON DUPLICATE KEY UPDATE
          school_group = VALUES(school_group),
+         target_name = COALESCE(VALUES(target_name), target_name),
          rank_position = VALUES(rank_position),
          return_rate = VALUES(return_rate),
          final_score = VALUES(final_score),

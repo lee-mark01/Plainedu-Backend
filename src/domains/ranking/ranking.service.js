@@ -311,6 +311,9 @@ const snapshotDailyRankings = async () => {
           ...base,
           target_type: 'TEAM',
           target_id: teamId,
+          // 확정 시점의 팀 이름을 함께 박는다. 팀이 해체되면 Teams 조인으로는 이름을 찾을 수
+          // 없는데 이 스냅샷 행은 남으므로, 이름이 없으면 과거 순위표에 무명 행이 생긴다.
+          target_name: profiles.get(teamId)?.team_name ?? null,
           rank_position: ranks[i],
           return_rate: profiles.get(teamId)?.r_percent ?? 0, // 컬럼 NOT NULL 방어 (계좌 미생성 팀은 이론상 보드 미등재)
           final_score: e.score,
