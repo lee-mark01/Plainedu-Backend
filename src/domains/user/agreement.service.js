@@ -1,4 +1,5 @@
 const agreementRepository = require('./agreement.repository');
+const { AGREEMENT_VERSIONS } = require('../../config/agreements');
 
 // API의 소문자 키 <-> DB ENUM 매핑. 프론트가 다루는 이름과 저장 형식을 분리해둔다.
 const KEY_TO_TYPE = { terms: 'TERMS', privacy: 'PRIVACY', marketing: 'MARKETING' };
@@ -16,10 +17,13 @@ const getAgreements = async (userId) => toResponse(await agreementRepository.fin
 
 // 보낸 항목만 갱신한다(부분 수정). 마이페이지에서 마케팅만 끄는 경우가 이 경로다.
 // 필수 항목(TERMS/PRIVACY)의 false는 validator가 이미 막는다 — 철회는 곧 탈퇴라 별도 API 소관.
+//
+// 동의 당시의 약관 버전을 함께 남긴다. 개정 후 재동의 대상을 가리려면 시각이 아니라
+// 버전이 있어야 한다 — 이유는 src/config/agreements.js에 적어뒀다.
 const saveAgreements = async (userId, input) => {
   for (const [key, type] of Object.entries(KEY_TO_TYPE)) {
     if (input[key] === undefined) continue;
-    await agreementRepository.upsert(userId, type, input[key]);
+    await agreementRepository.upsert(userId, type, input[key], AGREEMENT_VERSIONS[type]);
   }
   return getAgreements(userId);
 };

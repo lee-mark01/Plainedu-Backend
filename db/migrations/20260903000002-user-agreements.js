@@ -21,15 +21,20 @@ exports.setup = function (options, seedLink) {
 //
 // agreed_at은 철회해도 지우지 않는다. "언제 동의했었는지"가 증빙의 핵심이고,
 // 철회 시각은 updated_at이 갖는다. 한 번도 동의한 적 없으면 NULL이다.
+//
+// version은 동의를 받은 시점의 약관 버전이다(src/config/agreements.js). 약관을 개정하면
+// 저장된 version과 현재 version이 달라지고, 그게 재동의를 받아야 하는지 판단하는 근거가 된다.
+// 시각만으로는 판단할 수 없다 — 개정일을 코드 밖에서 따로 관리해야 하기 때문이다.
 exports.up = function (db) {
   return db.runSql(
     `CREATE TABLE IF NOT EXISTS UserAgreements (
-       id          INT       NOT NULL AUTO_INCREMENT,
-       user_id     INT       NOT NULL,
+       id          INT         NOT NULL AUTO_INCREMENT,
+       user_id     INT         NOT NULL,
        type        ENUM('TERMS','PRIVACY','MARKETING') NOT NULL,
-       is_agreed   BOOLEAN   NOT NULL DEFAULT FALSE,
-       agreed_at   TIMESTAMP NULL,
-       updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+       is_agreed   BOOLEAN     NOT NULL DEFAULT FALSE,
+       version     VARCHAR(20) NOT NULL DEFAULT '1.0',
+       agreed_at   TIMESTAMP   NULL,
+       updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
        PRIMARY KEY (id),
        UNIQUE KEY uq_ua_user_type (user_id, type),
        CONSTRAINT fk_ua_user

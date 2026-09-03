@@ -2,6 +2,7 @@ const userRepository = require('./user.repository');
 const rankingService = require('../ranking/ranking.service');
 const teamRepository = require('../team/team.repository');
 const schoolRepository = require('../school/school.repository');
+const agreementService = require('./agreement.service');
 const accountService = require('../account/account.service');
 const AppError = require('../../errors/AppError');
 
@@ -30,6 +31,9 @@ const getMyProfile = async (userId) => {
     // ranking 조회 실패 시 null 유지 (서비스 장애가 프로필 조회를 막지 않도록)
   }
 
+  // 온보딩 판정(약관 → 학교 → 이메일 인증 → 팀)이 이 응답 하나로 끝나야 하므로 여기서 합친다.
+  const agreements = await agreementService.getAgreements(userId);
+
   return {
     id: profile.id,
     email: profile.email,
@@ -39,6 +43,10 @@ const getMyProfile = async (userId) => {
     provider: profile.provider,
     school: profile.school_id
       ? { id: profile.school_id, name: profile.school_name, is_verified: Boolean(profile.school_is_verified) }
+      : null,
+    agreements,
+    phone: profile.phone
+      ? { number: profile.phone, is_verified: Boolean(profile.phone_verified_at) }
       : null,
     team: profile.team_id
       ? { id: profile.team_id, name: profile.team_name, role: profile.team_role }
