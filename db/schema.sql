@@ -117,11 +117,13 @@ CREATE TABLE IF NOT EXISTS Attendances (
 
 -- 2-2. Topics
 CREATE TABLE IF NOT EXISTS Topics (
-  id          INT          NOT NULL AUTO_INCREMENT,
-  title       VARCHAR(100) NOT NULL,
-  sort_order  INT          NOT NULL DEFAULT 0,
+  id            INT          NOT NULL AUTO_INCREMENT,
+  title         VARCHAR(100) NOT NULL,
+  level_number  INT          NOT NULL DEFAULT 1,
+  sort_order    INT          NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  INDEX idx_topics_sort (sort_order)
+  INDEX idx_topics_sort (sort_order),
+  INDEX idx_topics_level_sort (level_number, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2-3. ShortForms
