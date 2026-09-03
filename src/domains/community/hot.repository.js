@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { blockFilterClause } = require('./blockFilter');
 
 // 핫 종목 목록 (7일 기준, 게시글 수 + 댓글 수 + 좋아요 수 합산)
 const findHotStocks = async (limit) => {
@@ -22,7 +23,8 @@ const findHotStocks = async (limit) => {
 };
 
 // 인기 게시물 목록 (7일 기준, 좋아요 + 댓글 + 조회수 합산)
-const findPopularPosts = async (limit) => {
+const findPopularPosts = async (limit, viewer_id) => {
+  const filter = blockFilterClause('p.user_id', viewer_id);
   const [rows] = await pool.query(
     `SELECT p.id, p.user_id, p.post_type, p.stock_code, p.title,
             p.view_count, p.like_count, p.comment_count,
@@ -33,9 +35,10 @@ const findPopularPosts = async (limit) => {
      JOIN Users u ON p.user_id = u.id
      WHERE p.deleted_at IS NULL
        AND p.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+       ${filter.sql}
      ORDER BY score DESC
      LIMIT ?`,
-    [limit]
+    [...filter.params, limit]
   );
   return rows;
 };

@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { blockFilterClause } = require('./blockFilter');
 
 // 댓글 저장 (+ 게시글 comment_count 증가 — 핫/인기 점수식이 이 값을 쓴다)
 // like_count·view_count와 동일하게 트랜잭션 없이 2문 처리. 카운터가 캐시 성격이라
@@ -47,16 +48,20 @@ const softDelete = async (id, post_id) => {
 // 게시글의 댓글 목록 조회 (댓글 + 대댓글, 작성자 닉네임 포함)
 // 삭제된 댓글도 함께 가져온다 — 답글이 달린 부모를 걸러버리면 그 답글까지 트리에서 사라지기 때문.
 // 실제로 무엇을 노출할지는 service의 buildCommentTree가 정한다.
-const findByPostId = async (post_id) => {
+// viewer_id는 차단 필터용(비로그인이면 undefined). 차단 관계인 사람의 댓글은 목록에서 뺀다.
+// 대댓글의 부모가 가려지면 자식만 남아 맥락이 끊기는데, 그건 서비스 계층이 트리를 만들 때
+// 부모 없는 노드를 버리는 기존 동작으로 처리된다.
+const findByPostId = async (post_id, viewer_id) => {
+  const filter = blockFilterClause('c.user_id', viewer_id);
   const [rows] = await pool.query(
     `SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content,
             c.like_count, c.created_at, c.updated_at, c.deleted_at,
             u.nickname AS author_nickname
      FROM CommunityComments c
      JOIN Users u ON c.user_id = u.id
-     WHERE c.post_id = ?
+     WHERE c.post_id = ? ${filter.sql}
      ORDER BY c.created_at ASC`,
-    [post_id]
+    [post_id, ...filter.params]
   );
   return rows;
 };

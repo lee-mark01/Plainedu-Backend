@@ -43,7 +43,7 @@ const deletePost = async (req, res, next) => {
 const getPostById = async (req, res, next) => {
   try {
     const post_id = req.params.id;
-    const post = await communityService.getPostById(post_id);
+    const post = await communityService.getPostById(post_id, req.user?.userId);
     res.json({ success: true, data: post });
   } catch (err) {
     next(err);
@@ -54,7 +54,7 @@ const getPostById = async (req, res, next) => {
 const getPostsByCursor = async (req, res, next) => {
   try {
     const { cursor, limit, post_type, stock_code, keyword, search_type } = req.validated;
-    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, post_type, stock_code, keyword, search_type });
+    const { posts, hasNext } = await communityService.getPostsByCursor({ cursor, limit, post_type, stock_code, keyword, search_type, viewer_id: req.user?.userId });
     res.json({ success: true, data: { posts, hasNext } });
   }
   catch (err) {

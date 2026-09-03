@@ -26,13 +26,13 @@ const getFollowCounts = async (user_id) => {
 };
 
 // 팔로워 목록
-const getFollowers = async (user_id) => {
-  return await followRepository.findFollowers(user_id);
+const getFollowers = async (user_id, viewer_id) => {
+  return await followRepository.findFollowers(user_id, viewer_id);
 };
 
 // 팔로잉 목록
-const getFollowings = async (user_id) => {
-  return await followRepository.findFollowings(user_id);
+const getFollowings = async (user_id, viewer_id) => {
+  return await followRepository.findFollowings(user_id, viewer_id);
 };
 
 module.exports = { toggleFollow, getFollowCounts, getFollowers, getFollowings };

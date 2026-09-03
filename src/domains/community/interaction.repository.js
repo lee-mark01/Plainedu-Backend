@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { blockFilterClause } = require('./blockFilter');
 
 // === 게시글 좋아요 ===
 const findPostLike = async (user_id, post_id) => {
@@ -76,7 +77,10 @@ const insertPostView = async (user_id, post_id) => {
 };
 
 // PM-02: 내 스크랩 목록 조회
+// 스크랩해둔 글이라도 그 뒤에 작성자를 차단했으면 목록에서 뺀다.
+// 이 경로는 항상 로그인 상태라 뷰어가 곧 user_id다.
 const findBookmarkedPosts = async (user_id) => {
+  const filter = blockFilterClause('p.user_id', user_id);
   const [rows] = await pool.query(
     `SELECT p.id, p.title, p.post_type, p.stock_code, p.opinion,
             p.view_count, p.like_count, p.comment_count,
@@ -85,9 +89,9 @@ const findBookmarkedPosts = async (user_id) => {
      FROM PostBookmarks pb
      JOIN CommunityPosts p ON p.id = pb.post_id AND p.deleted_at IS NULL
      JOIN Users u ON u.id = p.user_id
-     WHERE pb.user_id = ?
+     WHERE pb.user_id = ? ${filter.sql}
      ORDER BY pb.created_at DESC`,
-    [user_id]
+    [user_id, ...filter.params]
   );
   return rows;
 };
