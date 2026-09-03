@@ -311,6 +311,23 @@ CREATE TABLE IF NOT EXISTS Portfolios (
     FOREIGN KEY (proposed_by) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 3-3b. TeamRules (팀 운영 규칙)
+-- 팀당 한 벌이라 team_id가 곧 PK. version은 낙관적 잠금용 — 규칙은 자유 텍스트라 병합할 수단이
+-- 없어서 "읽은 버전이 아직 최신인가"를 저장 시점에 확인해 덮어쓰기를 막는다.
+-- 규칙을 쓴 사람이 팀을 떠나도 내용은 팀의 것으로 남는다(updated_by만 NULL).
+CREATE TABLE IF NOT EXISTS TeamRules (
+  team_id     INT       NOT NULL,
+  content     TEXT      NOT NULL,
+  version     INT       NOT NULL DEFAULT 1,
+  updated_by  INT       NULL,
+  updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (team_id),
+  CONSTRAINT fk_tr_team
+    FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tr_updated_by
+    FOREIGN KEY (updated_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 3-4. TeamActivePortfolios
 CREATE TABLE IF NOT EXISTS TeamActivePortfolios (
   team_id                   INT            NOT NULL,
@@ -509,13 +526,16 @@ CREATE TABLE IF NOT EXISTS Watchlist (
 CREATE TABLE IF NOT EXISTS DailyRankings (
   id                  INT            NOT NULL AUTO_INCREMENT,
   season_id           INT            NOT NULL,
-  target_type         ENUM('USER','TEAM','SCHOOL') NOT NULL,
+  target_type         ENUM('USER','TEAM','SCHOOL_INDIVIDUAL','SCHOOL_TEAM') NOT NULL,
+  school_group        ENUM('HIGH_SCHOOL','UNIVERSITY') NULL,   -- 그룹 리그 내 순위. 통합 시절 행은 NULL
   target_id           INT            NOT NULL,
+  target_name         VARCHAR(100)   NULL,                     -- 확정 시점 이름 스냅샷. 현재 TEAM 행만 채운다
   rank_date           DATE           NOT NULL,
   rank_position       INT            NOT NULL,
   return_rate         DECIMAL(8,4)   NOT NULL,
   final_score         DECIMAL(10,4)  NOT NULL,
-  participation_rate  DECIMAL(5,2)   NOT NULL,
+  participation_rate  DECIMAL(5,2)   NULL,                     -- 소속 보드는 참여율 개념이 없어 NULL
+  alignment_score     DECIMAL(6,2)   NULL,                     -- 팀 보드 주간 확정값. 그 외 NULL
   PRIMARY KEY (id),
   UNIQUE KEY uq_dr_target_date (target_type, target_id, rank_date, season_id),
   INDEX idx_dr_season_date_type (season_id, rank_date, target_type),
