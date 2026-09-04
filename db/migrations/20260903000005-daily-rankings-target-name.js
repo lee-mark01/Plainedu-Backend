@@ -23,12 +23,35 @@ exports.setup = function (options, seedLink) {
 // 지금 채우는 건 TEAM 행뿐이지만(해체가 실제로 일어나는 유일한 경우), 탈퇴한 유저의 USER 행도
 // 같은 문제를 갖고 있어 나중에 컬럼 추가 없이 채울 수 있게 일반 이름으로 만든다.
 // 기존 행은 NULL이고, 호출부는 NULL이면 지금처럼 조인으로 이름을 찾는다.
+// MySQL은 ADD COLUMN IF NOT EXISTS를 지원하지 않아 information_schema로 먼저 확인한다.
+// 부분 적용된 환경에서 다시 돌려도 안전해야 한다.
+const toRows = (result) => {
+  if (Array.isArray(result) && Array.isArray(result[0])) return result[0];
+  if (Array.isArray(result)) return result;
+  if (result && Array.isArray(result.rows)) return result.rows;
+  return [];
+};
+
+const columnExists = (db, table, column) =>
+  db
+    .runSql(
+      'SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+      [table, column]
+    )
+    .then((result) => toRows(result)[0].cnt > 0);
+
 exports.up = function (db) {
-  return db.runSql('ALTER TABLE DailyRankings ADD COLUMN target_name VARCHAR(100) NULL AFTER target_id');
+  return columnExists(db, 'DailyRankings', 'target_name').then((exists) =>
+    exists
+      ? null
+      : db.runSql('ALTER TABLE DailyRankings ADD COLUMN target_name VARCHAR(100) NULL AFTER target_id')
+  );
 };
 
 exports.down = function (db) {
-  return db.runSql('ALTER TABLE DailyRankings DROP COLUMN target_name');
+  return columnExists(db, 'DailyRankings', 'target_name').then((exists) =>
+    exists ? db.runSql('ALTER TABLE DailyRankings DROP COLUMN target_name') : null
+  );
 };
 
 exports._meta = { version: 1 };
