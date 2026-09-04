@@ -2338,6 +2338,120 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  # ─────────────────────────── stock-alert ────────────────────────
+  /api/stock-alerts/push-token:
+    post:
+      tags: [stock-alert]
+      summary: 기기 푸시 토큰 등록
+      description: |
+        알림을 받을 기기의 푸시 토큰을 계정에 연결한다. 앱은 토큰이 갱신될 때마다 호출하면 되고,
+        같은 토큰을 다시 보내도 소유자·플랫폼만 갱신된다(멱등).
+
+        토큰은 계정이 아니라 **기기**에 딸린 값이라 유일하다. 기기에서 다른 계정으로 로그인해
+        같은 토큰이 올라오면 소유자가 새 계정으로 옮겨간다 — 그대로 두면 이전 계정의 알림이
+        그 기기로 계속 간다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string, maxLength: 255 }
+                platform: { type: string, enum: [IOS, ANDROID, WEB] }
+      responses:
+        '200':
+          description: 등록 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          registered: { type: boolean, example: true }
+                          platform: { type: string, enum: [IOS, ANDROID, WEB] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stock-alerts/{symbol}:
+    get:
+      tags: [stock-alert]
+      summary: 종목별 알림 조회
+      description: |
+        **설정한 조건만** 배열로 내려간다. 설정하지 않은 종류는 빠진 채로 오므로 프론트에서
+        기본 4개 항목에 합쳐 그리면 된다. 서버가 빈 값으로 채우면 "설정함"과 "값이 0"이
+        구분되지 않는다.
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StockAlerts' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 존재하지 않는 종목 (`STOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    put:
+      tags: [stock-alert]
+      summary: 종목별 알림 저장
+      description: |
+        보낸 `alerts`가 **그 종목의 전체 설정**이다. 요청에 없는 종류는 해제된 것으로 본다.
+        같은 body를 다시 보내면 결과가 같고(멱등), 빈 배열은 그 종목 알림 전체 해제를 뜻한다.
+
+        `threshold`의 단위는 `type`이 정한다 — `TARGET_PRICE`·`STOP_LOSS`는 가격(USD),
+        `DAILY_CHANGE`는 등락률(%, 음수 가능), `VOLUME`은 거래량(주).
+
+        조건 설정까지가 이 API의 범위다. 실제 발송(가격 도달 감지·중복 전송 방지)은 별도 작업이다.
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alerts]
+              properties:
+                alerts:
+                  type: array
+                  maxItems: 4
+                  description: 같은 `type`을 두 번 담을 수 없다.
+                  items:
+                    type: object
+                    required: [type, threshold]
+                    properties:
+                      type: { type: string, enum: [TARGET_PRICE, STOP_LOSS, DAILY_CHANGE, VOLUME] }
+                      threshold: { type: number, example: 185.5 }
+                      is_enabled: { type: boolean, default: true }
+      responses:
+        '200':
+          description: 저장된 전체 설정
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StockAlerts' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 존재하지 않는 종목 (`STOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   # ──────────────────────────── trading ───────────────────────────
   /api/trading/orders:
     get:
@@ -3815,6 +3929,25 @@ components:
         sender_nickname: { type: string, example: 투자왕 }
 
     # ── stock ──
+    StockAlerts:
+      type: object
+      description: |
+        설정한 조건만 담긴다. 미설정 종류는 배열에 없으므로 프론트에서 기본 4개 항목에 합친다.
+      properties:
+        stock_code: { type: string, example: AAPL }
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [TARGET_PRICE, STOP_LOSS, DAILY_CHANGE, VOLUME] }
+              threshold:
+                type: number
+                description: '단위는 type이 정한다 — 가격(USD) / 등락률(%) / 거래량(주)'
+                example: 185.5
+              is_enabled: { type: boolean, example: true }
+              updated_at: { type: string, format: date-time }
+
     Stock:
       type: object
       properties:

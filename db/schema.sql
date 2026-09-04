@@ -518,6 +518,47 @@ CREATE TABLE IF NOT EXISTS Watchlist (
     FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 4-x. StockAlerts (종목별 알림 조건)
+-- 설정한 조건만 행으로 남는다 — 조회 시 미설정 항목을 빈 값으로 채우지 않고 빼서 내린다.
+-- threshold 한 컬럼에 가격(달러)·등락률(%)·거래량(주)이 함께 들어간다. 단위 해석은 type이 정하고
+-- 서버는 임계값 비교만 한다.
+CREATE TABLE IF NOT EXISTS StockAlerts (
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
+  user_id     INT           NOT NULL,
+  stock_code  VARCHAR(20)   NOT NULL,
+  type        ENUM('TARGET_PRICE','STOP_LOSS','DAILY_CHANGE','VOLUME') NOT NULL,
+  threshold   DECIMAL(18,4) NOT NULL,
+  is_enabled  BOOLEAN       NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_sa_user_stock_type (user_id, stock_code, type),
+  INDEX idx_sa_user (user_id),
+  INDEX idx_sa_stock_enabled (stock_code, is_enabled),   -- 발송 단계에서 종목별 대상 조회용
+  CONSTRAINT fk_sa_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_sa_stock
+    FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4-y. PushTokens (기기 푸시 토큰)
+-- 토큰은 계정이 아니라 기기에 딸린 값이라 token이 유일하다. 기기에서 다른 계정으로 로그인하면
+-- 소유자를 옮긴다 — 안 그러면 이전 계정의 알림이 남의 기기로 간다.
+-- 같은 토큰이 여러 행이면 한 번 보낼 때 여러 번 발송되므로 이 제약이 중복 전송도 막는다.
+CREATE TABLE IF NOT EXISTS PushTokens (
+  id          BIGINT       NOT NULL AUTO_INCREMENT,
+  user_id     INT          NOT NULL,
+  token       VARCHAR(255) NOT NULL,
+  platform    ENUM('IOS','ANDROID','WEB') NOT NULL,
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_pt_token (token),
+  INDEX idx_pt_user (user_id),
+  CONSTRAINT fk_pt_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 5. 랭킹
 -- =============================================================================
