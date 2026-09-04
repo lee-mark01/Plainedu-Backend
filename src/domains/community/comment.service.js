@@ -112,12 +112,13 @@ const buildCommentTree = (comments) => {
 };
 
 // 댓글 목록 조회 (댓글 + 대댓글 트리 구조)
-const getCommentsByPostId = async (post_id) => {
-    const post = await postRepository.findById(post_id);
+// viewer_id는 차단 필터용(비로그인이면 undefined). 글 자체도 차단 대상이면 404가 된다.
+const getCommentsByPostId = async (post_id, viewer_id) => {
+    const post = await postRepository.findById(post_id, viewer_id);
     if (!post) {
         throw new AppError('Post not found', 404);
     }
-    return buildCommentTree(await commentRepository.findByPostId(post_id));
+    return buildCommentTree(await commentRepository.findByPostId(post_id, viewer_id));
 };
 
 module.exports = { createComment, updateComment, deleteComment, getCommentsByPostId, buildCommentTree };

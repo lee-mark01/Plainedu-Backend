@@ -706,6 +706,48 @@ CREATE TABLE IF NOT EXISTS PostBookmarks (
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 6-10. CommunityBlocks (차단)
+-- 선언은 단방향, 효과는 양방향 — 서로의 글·댓글·팔로우가 상대에게 보이지 않는다.
+-- 한쪽만 가리면 차단한 사람이 상대에게 계속 노출돼 회피 수단이 되지 않는다.
+-- idx_cb_blocked는 "나를 차단한 사람" 역방향 조회용이다.
+CREATE TABLE IF NOT EXISTS CommunityBlocks (
+  id          INT       NOT NULL AUTO_INCREMENT,
+  blocker_id  INT       NOT NULL,
+  blocked_id  INT       NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_cb_pair (blocker_id, blocked_id),
+  INDEX idx_cb_blocked (blocked_id),
+  CONSTRAINT fk_cb_blocker
+    FOREIGN KEY (blocker_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_cb_blocked
+    FOREIGN KEY (blocked_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-11. CommunityReports (신고)
+-- 접수만 한다. 제재를 부과하는 주체가 아직 없어 status는 RECEIVED에서 시작한다.
+-- 같은 대상을 여러 번 신고해도 한 건으로 본다(uq_cr_reporter_target) — 중복 접수를 허용하면
+-- 신고 수를 제재 근거로 쓸 때 한 사람이 수치를 부풀릴 수 있다.
+-- target_id에 FK가 없는 이유: 대상이 글·댓글·유저로 갈려 한 컬럼으로 참조할 수 없고,
+-- 신고된 글이 삭제돼도 접수 기록은 남아야 한다.
+CREATE TABLE IF NOT EXISTS CommunityReports (
+  id            INT          NOT NULL AUTO_INCREMENT,
+  reporter_id   INT          NOT NULL,
+  target_type   ENUM('POST','COMMENT','USER') NOT NULL,
+  target_id     INT          NOT NULL,
+  reason        ENUM('SPAM','ABUSE','ADULT','FALSE_INFO','ETC') NOT NULL,
+  detail        VARCHAR(500) NULL,
+  status        ENUM('RECEIVED','REVIEWING','RESOLVED','REJECTED') NOT NULL DEFAULT 'RECEIVED',
+  created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at  TIMESTAMP    NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_cr_reporter_target (reporter_id, target_type, target_id),
+  INDEX idx_cr_target (target_type, target_id),
+  INDEX idx_cr_status (status, created_at),
+  CONSTRAINT fk_cr_reporter
+    FOREIGN KEY (reporter_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 후처리: 순환/순서 의존 FK
 -- =============================================================================
