@@ -10,6 +10,7 @@ const validate = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
 const optionalAuthenticate = require('../../middlewares/optionalAuthenticate');
 const moderationController = require('./moderation.controller');
+const suggestController = require('./suggest.controller');
 const { createPostSchema, getPostsByCursorSchema, updatePostSchema, searchStocksSchema } = require('./post.validator');
 const { createCommentSchema, updateCommentSchema } = require('./comment.validator');
 const { hotListSchema } = require('./hot.validator');
@@ -20,6 +21,7 @@ const {
   blockUserSchema,
   blockParamSchema,
 } = require('./moderation.validator');
+const { suggestedUsersSchema } = require('./suggest.validator');
 
 // 게시글 (조회: 공개 / 작성·수정·삭제: 인증 필요)
 router.post('/posts', authenticate, validate(createPostSchema), communityController.createPost);
@@ -48,6 +50,10 @@ router.get('/hot/stocks', validate(hotListSchema, 'query'), hotController.getHot
 router.get('/hot/posts', optionalAuthenticate, validate(hotListSchema, 'query'), hotController.getPopularPosts);
 
 // 팔로우 (인증 필요)
+// 추천 사용자 (요청 20). 고정 경로라 '/users/:user_id/...'보다 앞에 있어야 한다 —
+// 뒤에 두면 'suggested'가 user_id로 매칭된다.
+router.get('/users/suggested', authenticate, validate(suggestedUsersSchema, 'query'), suggestController.getSuggestedUsers);
+
 router.post('/users/:user_id/follow', authenticate, followController.toggleFollow);
 router.get('/users/:user_id/follow/counts', followController.getFollowCounts);
 router.get('/users/:user_id/followers', optionalAuthenticate, followController.getFollowers);
