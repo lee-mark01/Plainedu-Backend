@@ -593,6 +593,97 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/users/me/notification-prefs:
+    get:
+      tags: [user]
+      summary: 알림 수신 설정 조회
+      description: |
+        저장된 값이 없는 신규 사용자에게도 **전 항목이 채워진 상태**로 내려간다. 서버 기본값을
+        덮어 만들기 때문에 `undefined`가 섞이지 않는다.
+
+        항목은 실제로 발송되는 알림에 대응한다 — `community` 넷과 `invest`의 `vote_start`·
+        `portfolio_changed`는 `Notifications.type`에, `invest.stock_alert`는 종목별 알림에 붙는다.
+        `service.notice`와 `learning.reminder`는 **아직 보내는 쪽이 없다** — 설정 화면에
+        자리를 먼저 만든 것이고, 값은 저장되며 발송이 붙을 때 존중된다.
+
+        `service.push`는 마스터 스위치다. 꺼지면 나머지 값과 무관하게 푸시를 보내지 않는다.
+
+        마케팅 수신 동의는 여기 없다 — `PATCH /api/users/me/agreements`의 `marketing`이 담당한다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPrefs' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [user]
+      summary: 알림 수신 설정 수정
+      description: |
+        **보낸 항목만 갱신한다.** 그룹 하나, 항목 하나만 보내도 되고 나머지 설정은 그대로 남는다.
+
+        정의에 없는 그룹·항목은 `400`으로 거부한다 — 오타를 조용히 삼키면 프론트는 저장됐다고
+        믿는데 서버에는 아무것도 남지 않는다.
+
+        응답은 갱신 후 **전체 상태**라 저장 직후 다시 조회할 필요가 없다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: 그룹·항목 모두 선택. 최소 하나는 보내야 한다.
+              properties:
+                service:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    push: { type: boolean }
+                    notice: { type: boolean }
+                learning:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    reminder: { type: boolean }
+                invest:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    stock_alert: { type: boolean }
+                    vote_start: { type: boolean }
+                    portfolio_changed: { type: boolean }
+                community:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    followee_post: { type: boolean }
+                    post_like: { type: boolean }
+                    post_comment: { type: boolean }
+                    comment_reply: { type: boolean }
+              example:
+                community: { post_like: false }
+      responses:
+        '200':
+          description: 갱신 후 전체 설정
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPrefs' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/users/attendance/check-in:
     post:
       tags: [user]
@@ -3472,6 +3563,34 @@ components:
             position:
               allOf: [{ $ref: '#/components/schemas/Position' }]
               nullable: true
+    NotificationPrefs:
+      type: object
+      description: |
+        전 항목이 항상 채워져 내려간다. 저장된 적 없는 항목은 서버 기본값(현재 전부 true)이다.
+      properties:
+        service:
+          type: object
+          properties:
+            push: { type: boolean, example: true, description: 마스터 스위치. 꺼지면 전부 발송하지 않는다. }
+            notice: { type: boolean, example: true, description: 서비스 공지. 발송 주체 미구현. }
+        learning:
+          type: object
+          properties:
+            reminder: { type: boolean, example: true, description: 학습 리마인더. 발송 주체 미구현. }
+        invest:
+          type: object
+          properties:
+            stock_alert: { type: boolean, example: true }
+            vote_start: { type: boolean, example: true }
+            portfolio_changed: { type: boolean, example: true }
+        community:
+          type: object
+          properties:
+            followee_post: { type: boolean, example: true }
+            post_like: { type: boolean, example: true }
+            post_comment: { type: boolean, example: true }
+            comment_reply: { type: boolean, example: true }
+
     Agreements:
       type: object
       description: |
