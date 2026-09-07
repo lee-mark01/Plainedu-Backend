@@ -2295,6 +2295,79 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/stocks/signals:
+    get:
+      tags: [stock]
+      summary: 투자 신호
+      description: |
+        투자 홈에 띄울 신호 목록. 세 종류를 낸다 —
+        `POPULAR`(인기 종목) · `RSI_OVERSOLD`(과매도) · `MACD_GOLDEN_CROSS`(골든크로스).
+
+        **기준 시각이 두 층이다.** `as_of`는 계산을 돌린 시각이고, 신호별 `based_on`은 지표가
+        반영한 마지막 봉의 날짜다. 계산 시각만 보면 오래된 봉으로 만든 값을 방금 만든 것처럼
+        보여주게 되므로, 화면에는 `based_on`을 쓰는 게 맞다.
+
+        `source`는 신호의 출처다 — `daily_candles`(일봉에서 계산한 기술적 지표) ·
+        `community`(이 서비스 사용자의 관심목록·글 태그).
+
+        **인기 종목은 시장 지표가 아니라 우리 사용자 기준이다.** 관심목록에 담은 수와 글에
+        태그된 수를 합산하며, 글 태그에 가중치를 더 준다(글을 쓰는 게 더 큰 행동이라서).
+
+        `RSI_OVERSOLD`는 14일 RSI가 30 이하일 때, `MACD_GOLDEN_CROSS`는 MACD선이 신호선을
+        **막 상향 돌파한 봉**에서만 뜬다. 단순히 MACD > 신호선으로 잡으면 상승 추세 내내 매일
+        신호가 떠서 의미가 없다.
+
+        결과는 15분 캐시된다(`cached`로 구분). 지표가 일봉 기준이라 분 단위로 바뀌지 않고,
+        외부 시세 크레딧도 아낀다. 조회가 실패한 종목은 건너뛰므로 `analyzed_count`가 전체
+        종목 수보다 작을 수 있다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          as_of:
+                            type: string
+                            format: date-time
+                            description: 계산을 돌린 시각
+                          cached: { type: boolean, description: 캐시된 결과인지 }
+                          analyzed_count:
+                            type: integer
+                            description: 지표 계산에 성공한 종목 수
+                            example: 10
+                          signals:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                  enum: [POPULAR, RSI_OVERSOLD, MACD_GOLDEN_CROSS]
+                                stock_code: { type: string, example: AAPL }
+                                name: { type: string, example: Apple Inc }
+                                value:
+                                  type: number
+                                  description: 신호별 대표값 — 인기도 / RSI / MACD 히스토그램
+                                  example: 27.3
+                                threshold:
+                                  type: number
+                                  nullable: true
+                                  description: RSI_OVERSOLD의 판정 경계(30)
+                                based_on:
+                                  type: string
+                                  description: 지표가 반영한 마지막 봉의 시각
+                                source:
+                                  type: string
+                                  enum: [daily_candles, community]
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/stocks/related-terms:
     get:
       tags: [stock]
