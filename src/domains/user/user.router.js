@@ -8,6 +8,8 @@ const { attendanceQuerySchema } = require('./attendance.validator');
 const { updateProfileSchema } = require('./user.validator');
 const agreementController = require('./agreement.controller');
 const { agreementsSchema } = require('./agreement.validator');
+const notificationPrefController = require('./notificationPref.controller');
+const { updateNotificationPrefsSchema } = require('./notificationPref.validator');
 
 // 예시: GET /api/users
 router.get('/', userController.getUsers);
@@ -24,6 +26,18 @@ router.patch(
   authenticate,
   validate(agreementsSchema),
   agreementController.patchAgreements
+);
+
+// ── 알림 수신 설정 ──
+// 프론트 요청서는 /api/me/notification-prefs로 적어왔지만, 운영 계약 문서가 그 경로를
+// "복구하면 안 되는 과거 초안"으로 지정하고 도메인 규칙에 맞는 새 계약을 요구한다.
+// /me/saved가 도메인별 API로 해체된 것과 같은 맥락이라 users 도메인 아래 /me/agreements 옆에 둔다.
+router.get('/me/notification-prefs', authenticate, notificationPrefController.getPrefs);
+router.patch(
+  '/me/notification-prefs',
+  authenticate,
+  validate(updateNotificationPrefsSchema),
+  notificationPrefController.updatePrefs
 );
 
 // ── 출석 ──

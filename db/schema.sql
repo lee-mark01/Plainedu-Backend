@@ -117,6 +117,24 @@ CREATE TABLE IF NOT EXISTS UserAgreements (
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 1-7. NotificationPrefs (알림 수신 설정)
+-- 항목마다 컬럼을 만들지 않고 (user_id, pref_key) 한 행씩 쌓는다 — 알림 종류는 기능이 늘 때마다
+-- 함께 늘고, 부분 수정도 행 단위가 자연스럽다.
+-- 행이 없으면 서버 기본값(src/domains/user/notificationPref.defaults.js). 가입 시 미리 넣지
+-- 않는 이유는 기본값이 바뀌었을 때 기존 유저가 옛 값에 묶이지 않게 하기 위해서다.
+-- 마케팅 수신 동의는 여기 없다 — UserAgreements.MARKETING 소관이다(법적 증빙 필요).
+CREATE TABLE IF NOT EXISTS NotificationPrefs (
+  id          BIGINT      NOT NULL AUTO_INCREMENT,
+  user_id     INT         NOT NULL,
+  pref_key    VARCHAR(64) NOT NULL,                   -- 'community.post_like' 형식
+  is_enabled  BOOLEAN     NOT NULL,
+  updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_np_user_key (user_id, pref_key),
+  CONSTRAINT fk_np_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 2. 활동 및 퀴즈 (출석/포인트/학습)
 -- =============================================================================
