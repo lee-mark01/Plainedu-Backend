@@ -1928,6 +1928,63 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/community/users/suggested:
+    get:
+      tags: [community]
+      summary: 추천 사용자
+      description: |
+        팔로우할 만한 사용자를 추천한다. 신호 두 가지를 합산한다 —
+        **관심사 유사도**(내 관심종목과 겹치는 종목 수)와 **활동량**(최근 30일 작성 글 수).
+        관심사에 가중치를 더 준다: 활동량만 높은 사람은 아무에게나 추천되지만, 겹치는 관심
+        종목은 그 사람에게만 해당하는 이유이기 때문이다.
+
+        본인·이미 팔로우한 사람·차단 관계(양방향)는 제외된다. 그래서 `is_following`은 항상
+        `false`지만, 프론트가 목록에서 바로 팔로우 버튼 상태를 다루도록 필드로 내려준다.
+
+        `shared_interests`는 **추천 이유**다 — "관심종목 3개가 겹쳐요" 같은 표시에 쓴다.
+
+        추천할 근거가 하나도 없으면 빈 배열이다. 가입 초기나 관심종목을 담지 않은 사용자에게는
+        자연스러운 상태이고, 억지로 채우면 추천의 의미가 사라진다.
+
+        > 요청서의 "배지"는 담지 않았다. 백엔드에 사용자 배지 개념이 없다 — 정의가 정해지면
+        > additive로 추가한다.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                user_id: { type: integer, example: 12 }
+                                nickname: { type: string, example: 인천인 }
+                                is_following: { type: boolean, example: false }
+                                shared_interests:
+                                  type: integer
+                                  description: 겹치는 관심종목 수 (추천 이유)
+                                  example: 3
+                                recent_post_count:
+                                  type: integer
+                                  description: 최근 30일 작성 글 수
+                                  example: 7
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/community/users/{user_id}/follow:
     post:
       tags: [community]
@@ -2235,6 +2292,68 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
         '200': { $ref: '#/components/responses/StockListOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/related-terms:
+    get:
+      tags: [stock]
+      summary: 연관 검색어
+      description: |
+        검색어와 함께 볼 만한 종목을 짧게 추천한다. 검색창 아래 붙는 목록이라 기본 8개다.
+
+        **연관 신호는 동시 출현 두 가지다** — 같은 글에 함께 태그된 종목(`PostStockTags`)과
+        같은 사람이 함께 담은 종목(`Watchlist`). 글 태그에 가중치를 더 준다: 관심종목은
+        담아두고 잊는 경우가 많지만, 한 글에 두 종목을 함께 적었다면 글쓴이가 둘을 실제로
+        엮어 생각한 것이다.
+
+        검색 로그 테이블이 없어 "이 검색어를 쓴 사람이 다음에 본 것" 방식은 쓸 수 없고,
+        종목에 업종 정보가 없어 "같은 업종"도 쓸 수 없다.
+
+        `matched_by`로 후보의 출처를 구분한다 — `related`(기준 종목과 함께 등장) ·
+        `prefix`(기준 종목을 못 찾아 이름·코드 앞부분으로 제안). 프론트가 "연관 종목"과
+        "검색어 보정"을 다르게 보여줄 수 있다.
+
+        동시 출현 데이터가 아직 없으면 `terms`가 빈 배열이다 — 서비스 초기에는 정상이다.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 50 }
+          description: 검색어. 종목 코드 또는 이름 일부.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 8 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          q: { type: string, example: AAPL }
+                          seed:
+                            type: object
+                            nullable: true
+                            description: 검색어로 찾은 기준 종목. 못 찾으면 `null`이고 `matched_by`는 prefix가 된다.
+                            properties:
+                              stock_code: { type: string, example: AAPL }
+                              name: { type: string, example: Apple Inc }
+                          terms:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                term: { type: string, description: 화면에 그대로 띄울 문자열(종목명), example: Microsoft }
+                                stock_code: { type: string, example: MSFT }
+                                score: { type: integer, example: 12 }
+                                matched_by: { type: string, enum: [related, prefix] }
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/ServerError' }
 

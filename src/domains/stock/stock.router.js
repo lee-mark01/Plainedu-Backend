@@ -4,11 +4,16 @@ const validate = require('../../middlewares/validate');
 const authenticate = require('../../middlewares/authenticate');
 const stockController = require('./stock.controller');
 const chartController = require('./chart.controller');
-const { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema } = require('./stock.validator');
+const { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema, relatedTermsSchema } = require('./stock.validator');
+const relatedTermsController = require('./relatedTerms.controller');
 const { symbolParamsSchema, chartQuerySchema } = require('./chart.validator');
 
 // 종목 검색 (Stocks 테이블 — 검색바용)
 router.get('/search', validate(searchStocksSchema, 'query'), stockController.searchStocks);
+
+// 연관 검색어 (요청 19). 고정 경로라 '/:symbol'보다 앞에 있어야 한다 —
+// 뒤에 두면 'related-terms'가 심볼로 매칭된다.
+router.get('/related-terms', validate(relatedTermsSchema, 'query'), relatedTermsController.getRelatedTerms);
 
 // 관심종목 (:symbol 와일드카드 라우트보다 먼저 선언)
 router.get('/watchlist', authenticate, stockController.getWatchlist);
