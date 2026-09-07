@@ -60,8 +60,8 @@ test('OpenAPI가 휴대폰 인증과 약관 동의 계약을 문서화한다', (
   // 프론트 타이머가 이 두 값을 쓴다 — 빠지면 화면에서 카운트다운을 못 띄운다.
   const sendData = spec.paths['/api/auth/phone/send'].post.responses['200']
     .content['application/json'].schema.allOf[1].properties.data.properties;
-  assert.ok(sendData.cooldownSeconds);
-  assert.ok(sendData.expiresInSeconds);
+  assert.ok(sendData.cooldown_seconds);
+  assert.ok(sendData.expires_in_seconds);
 
   assert.ok(spec.components.schemas.Agreements);
   assert.ok(spec.components.schemas.MyProfile.properties.agreements);
