@@ -42,7 +42,7 @@ const sendVerificationCode = async (userId, phone) => {
   }
 
   await redis.set(`${COOLDOWN_PREFIX}${phone}`, '1', 'EX', cooldown());
-  return { cooldownSeconds: cooldown(), expiresInSeconds: codeTtl() };
+  return { cooldown_seconds: cooldown(), expires_in_seconds: codeTtl() };
 };
 
 const verifyCode = async (userId, phone, code) => {

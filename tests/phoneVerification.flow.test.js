@@ -49,8 +49,8 @@ test('발송: 코드를 저장하고 SMS 1건을 보낸다', async () => {
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, PHONE);
   assert.match(sent[0].text, /인증번호 \d{6}/);
-  assert.equal(r.cooldownSeconds, 30);
-  assert.equal(r.expiresInSeconds, 180);
+  assert.equal(r.cooldown_seconds, 30);
+  assert.equal(r.expires_in_seconds, 180);
   assert.ok(store.has(`phone_verify:${PHONE}`), '코드가 저장돼야 한다');
 });
 

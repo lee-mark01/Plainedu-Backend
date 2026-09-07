@@ -337,7 +337,7 @@ paths:
         입력한 번호로 6자리 인증번호를 SMS 발송한다. 하이픈은 서버가 제거하므로
         `010-1234-5678`과 `01012345678` 중 무엇을 보내도 된다.
 
-        응답의 `cooldownSeconds`(재발송까지 남은 초)와 `expiresInSeconds`(인증번호 유효시간)로
+        응답의 `cooldown_seconds`(재발송까지 남은 초)와 `expires_in_seconds`(인증번호 유효시간)로
         프론트 타이머를 띄우면 된다. 쿨다운 중 재요청하면 `429 RESEND_COOLDOWN`이고,
         메시지에 남은 초가 담긴다.
       requestBody:
@@ -362,8 +362,8 @@ paths:
                       data:
                         type: object
                         properties:
-                          cooldownSeconds: { type: integer, example: 30 }
-                          expiresInSeconds: { type: integer, example: 180 }
+                          cooldown_seconds: { type: integer, example: 30 }
+                          expires_in_seconds: { type: integer, example: 180 }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`) }
