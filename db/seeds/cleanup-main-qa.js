@@ -12,6 +12,7 @@ const QA_USER_EMAILS = Object.freeze([
   'dummy.univ2@test.com',
   'dummy.unverified@test.com',
   'dummy.noschool@test.com',
+  'dummy.admin@test.com',
 ]);
 const QA_SCHOOL_NAMES = Object.freeze(['테스트고등학교', '테스트대학교']);
 

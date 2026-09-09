@@ -15,6 +15,7 @@ const login = async (req, res, next) => {
     const data = await service.login(req.validated.pin, {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
+      persona: req.validated.persona,
     });
     res.status(201).json({ success: true, data });
   } catch (error) {
