@@ -217,15 +217,45 @@ CREATE TABLE IF NOT EXISTS UserQuizLog (
   id          INT       NOT NULL AUTO_INCREMENT,
   user_id     INT       NOT NULL,
   quiz_id     INT       NOT NULL,
+  attempt_id  INT       NULL,                          -- 어느 응시 회차에 속하는지 (QuizAttempts)
   is_correct  BOOLEAN   NOT NULL,
   created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   INDEX idx_uql_user_quiz (user_id, quiz_id),
   INDEX idx_uql_quiz (quiz_id),
+  INDEX idx_uql_attempt (attempt_id),
   CONSTRAINT fk_uql_user
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_uql_quiz
-    FOREIGN KEY (quiz_id) REFERENCES Quizzes(id) ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (quiz_id) REFERENCES Quizzes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  -- SET NULL: 로그는 원본 기록이라 회차가 지워져도 남아야 한다
+  CONSTRAINT fk_uql_attempt
+    FOREIGN KEY (attempt_id) REFERENCES QuizAttempts(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 2-6b. QuizAttempts (퀴즈 응시 회차)
+-- UserQuizLog는 문제 하나에 한 행이라 "어디까지가 1회차인가"를 알 수 없다.
+-- 점수를 확정 시점 스냅샷으로 남기는 이유: 로그에서 재계산하면 나중에 그 주제에 퀴즈가
+-- 추가·삭제됐을 때 분모가 달라져 사용자가 그때 본 점수가 바뀐다.
+-- UserProgress와 역할이 다르다 — UserProgress는 덮어쓰기라 "현재 상태"만 갖고, 이력은 여기가 맡는다.
+-- 완료를 안 누른 채 이탈하면 IN_PROGRESS로 남는다. 다음 응시가 이어 붙고 목록에는 COMPLETED만 나간다.
+CREATE TABLE IF NOT EXISTS QuizAttempts (
+  id                INT       NOT NULL AUTO_INCREMENT,
+  user_id           INT       NOT NULL,
+  topic_id          INT       NOT NULL,
+  status            ENUM('IN_PROGRESS','COMPLETED') NOT NULL DEFAULT 'IN_PROGRESS',
+  correct_count     INT       NOT NULL DEFAULT 0,      -- 이 회차에서 맞은 문제 수
+  total_quiz_count  INT       NOT NULL DEFAULT 0,      -- 주제의 전체 문제 수 (회차 간 비교 가능하도록)
+  score             INT       NULL,                    -- 완료 시 확정
+  started_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at      TIMESTAMP NULL,
+  PRIMARY KEY (id),
+  INDEX idx_qa_user_completed (user_id, completed_at),        -- 최신순 페이지네이션
+  INDEX idx_qa_user_topic_status (user_id, topic_id, status), -- 진행 중 회차 조회
+  CONSTRAINT fk_qa_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_qa_topic
+    FOREIGN KEY (topic_id) REFERENCES Topics(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2-7. UserProgress

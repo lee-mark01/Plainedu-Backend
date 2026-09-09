@@ -190,12 +190,14 @@ const findQuizAnswerById = async (quizId, executor = pool) => {
  * - 같은 (user_id, quiz_id) 조합이 여러 번 INSERT될 수 있음 (재도전 허용).
  * - 진행률 계산 시에는 GROUP BY로 distinct 처리.
  */
-const insertQuizLog = async (userId, quizId, isCorrect, executor = pool) => {
+// attemptId는 이 답안이 어느 응시 회차에 속하는지다(QuizAttempts). 회차가 없으면 NULL로
+// 들어가지만 정상 흐름에서는 항상 채워진다 — 회차 없이 쌓인 과거 로그와 구분된다.
+const insertQuizLog = async (userId, quizId, isCorrect, attemptId = null, executor = pool) => {
   const sql = `
-    INSERT INTO UserQuizLog (user_id, quiz_id, is_correct)
-    VALUES (?, ?, ?)
+    INSERT INTO UserQuizLog (user_id, quiz_id, is_correct, attempt_id)
+    VALUES (?, ?, ?, ?)
   `;
-  const [result] = await executor.query(sql, [userId, quizId, isCorrect]);
+  const [result] = await executor.query(sql, [userId, quizId, isCorrect, attemptId]);
   return result;
 };
 
