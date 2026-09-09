@@ -49,7 +49,28 @@ const delegateAndLeaveSchema = Joi.object({
   }),
 });
 
+// GET /api/teams/me/join-requests?status=&page=&limit= (요청 24)
+const joinRequestListSchema = Joi.object({
+  status: Joi.string().valid('PENDING', 'APPROVED', 'REJECTED', 'CANCELED'),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(50).default(20),
+});
+
+// POST /api/teams/me/join-requests (요청 25)
+// 요청서가 requestId + decision 형태를 제안했고 그대로 따른다.
+const decideJoinRequestSchema = Joi.object({
+  request_id: Joi.number().integer().positive().required().messages({
+    'any.required': '처리할 가입 신청을 선택해주세요.',
+  }),
+  decision: Joi.string().valid('APPROVE', 'REJECT').required().messages({
+    'any.only': 'decision은 APPROVE 또는 REJECT여야 합니다.',
+    'any.required': '승인 또는 거절을 선택해주세요.',
+  }),
+});
+
 module.exports = {
+  joinRequestListSchema,
+  decideJoinRequestSchema,
   createTeamSchema,
   joinTeamSchema,
   listTeamsSchema,

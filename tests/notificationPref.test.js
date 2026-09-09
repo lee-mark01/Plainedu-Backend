@@ -61,14 +61,16 @@ test('항목이 실제 알림 종류와 대응한다', () => {
   const enumLine = block[1].match(/type\s+ENUM\(([^)]*)\)/);
   assert.ok(enumLine, 'Notifications.type ENUM을 찾지 못했다');
 
-  const types = enumLine[1].split(',').map((s) => s.trim().replace(/'/g, '').toLowerCase());
-  const mapped = [
-    ...Object.keys(NOTIFICATION_PREFS.community),
-    ...Object.keys(NOTIFICATION_PREFS.invest),
-  ];
+  const types = enumLine[1].split(',').map((s) => s.trim().replace(/'/g, ''));
+
+  // 매핑은 TYPE_TO_PREF_KEY 한 곳에 있다 — 발송 필터가 그 표를 쓰므로 여기서도 같은 표를 본다.
+  // 그룹 이름으로 유추하면 team처럼 새 그룹이 생길 때마다 이 테스트를 고쳐야 한다.
+  const { TYPE_TO_PREF_KEY, PREF_KEYS } = require('../src/domains/user/notificationPref.defaults');
 
   for (const type of types) {
-    assert.ok(mapped.includes(type), `알림 종류 ${type}에 대응하는 설정 항목이 없다`);
+    const prefKey = TYPE_TO_PREF_KEY[type];
+    assert.ok(prefKey, `알림 종류 ${type}에 대응하는 설정 항목이 없다`);
+    assert.ok(PREF_KEYS.includes(prefKey), `${prefKey}가 설정 정의에 없다`);
   }
 });
 

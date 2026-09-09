@@ -55,6 +55,8 @@
 | GET | `/api/users/me/notification-prefs` | 🔒 | 알림 수신 설정. 저장값이 없어도 **전 항목이 서버 기본값으로 채워져** 내려간다 |
 | PATCH | `/api/users/me/notification-prefs` | 🔒 | 알림 수신 설정 부분 수정. 그룹·항목 중 최소 하나. 정의에 없는 키는 400. 응답은 갱신 후 전체 상태 |
 
+**알림 설정은 발송에 실제로 반영된다** — `createNotification`이 수신자 설정을 확인하고 꺼진 종류는 만들지 않는다. `service.push`는 마스터 스위치라 꺼지면 개별 항목과 무관하게 발송하지 않는다. 그룹은 service·learning·invest·team·community 다섯이다.
+
 ## school — 학교 (`/api/schools`)
 
 | Method | Path | 인증 | 설명 |
@@ -67,7 +69,7 @@
 | Method | Path | 인증 | 설명 |
 |---|---|---|---|
 | POST | `/api/teams` | 🔒 | 팀 생성 (+팀 계좌 자동 생성). body `{ name, position: TRADER\|ANALYST, [max_member_count=4] }` — 대학은 이메일 인증, 고교는 학교 선택 필수(미충족 403), 이미 팀 있으면 409 |
-| POST | `/api/teams/join` | 🔒 | 팀 가입. body `{ join_code(8자), position }` — 같은 학교 팀만(403), 정원 초과 409, 코드 오류 404 |
+| POST | `/api/teams/join` | 🔒 | **팀 가입 신청**(즉시 가입 아님). body `{ join_code(8자), position }` → `{ request_id, status: PENDING, team }`. 팀장 승인이 필요하고 팀장에게 알림이 간다. 같은 학교만(403), 정원 찬 팀 409 `TEAM_FULL`, 코드 오류 404, 중복 신청 409 `ALREADY_REQUESTED`. **대기 신청은 유저당 1개** — 다른 팀에 새로 신청하면 기존 건이 자동 취소된다 |
 | GET | `/api/teams?keyword=&limit=` | 🔒 | **같은 학교** 팀 목록/검색 (limit 기본 20·최대 50, `page` 없음) |
 | GET | `/api/teams/me` | 🔒 | 내 팀 조회. ⚠️ `members[]`에 `role`(LEADER/MEMBER)만 있고 `position`(TRADER/ANALYST)은 없다 (P2 참조) |
 | GET | `/api/teams/me/account` | 🔒 | 팀 계좌 요약+보유 (TH-01/TT-01) — **응답 스키마가 `/api/accounts/me`와 동일**(Scope 토글 시 프론트 컴포넌트 재사용). 팀 미소속 403 |
@@ -76,6 +78,10 @@
 | POST | `/api/teams/me/leave` | 🔒 | 팀 탈퇴. 팀원이면 그냥 탈퇴, 팀장이면 **가장 오래된 팀원에게 자동 위임** 후 탈퇴, 혼자면 **자동 해체**. 한 트랜잭션. 탈퇴 시 `position`은 `NONE`으로 |
 | POST | `/api/teams/me/delegate-and-leave` | 🔒 | 넘길 사람을 직접 골라 위임 후 탈퇴. body `{ user_id }` — 팀장만(403), 자기 자신 400, 타 팀원 404 |
 | DELETE | `/api/teams/me` | 🔒 | 팀 해체 (팀장만). 팀원·포트폴리오·팀 계좌·주문·보유가 CASCADE 삭제. 과거 순위 기록은 남는다(확정 시점 팀 이름 스냅샷) |
+| GET | `/api/teams/me/invitations` | 🔒 | 초대 코드 조회 (팀장만). `remaining_slots`가 0이면 신청이 막힌다. `is_expired`는 항상 false — 시간 만료 대신 재발급으로 무효화한다 |
+| POST | `/api/teams/me/invitations` | 🔒 | 초대 코드 재발급 (팀장만). 이전 코드 즉시 무효. 유출된 코드로 오는 스팸 신청을 끊는 수단 |
+| GET | `/api/teams/me/join-requests?status=&page=&limit=` | 🔒 | 가입 신청 목록 (팀장만). **대기 건이 먼저**, 그다음 최근 처리 순. 신청자 닉네임·희망 포지션 포함 |
+| POST | `/api/teams/me/join-requests` | 🔒 | 승인·거절 (팀장만). body `{ request_id, decision: APPROVE\|REJECT }`. 승인 시 정원·신청자 소속을 **다시 확인**한다(409 `TEAM_FULL` / `APPLICANT_IN_TEAM`). 두 번 처리하면 409 `REQUEST_ALREADY_PROCESSED` |
 | GET | `/api/teams/me/rules` | 🔒 | 팀 규칙 조회. 미작성 팀은 `content: null`·`version: 0`(오류 아님). 저장 시 이 `version`을 돌려보낸다 |
 | PUT | `/api/teams/me/rules` | 🔒 | 팀 규칙 저장 (팀장만). body `{ content, version }` — **낙관적 잠금**. 그 사이 누가 먼저 저장했으면 409 `RULES_VERSION_CONFLICT` |
 | PATCH | `/api/teams/me/members/:userId/role` | 🔒 | 팀원 역할·포지션 변경 (팀장만). body `{ [role], [position] }` — `role: LEADER`는 곧 **위임**(현 팀장 동시 강등). 위임 없는 자가 강등은 409 `LAST_LEADER` |

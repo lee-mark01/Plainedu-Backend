@@ -4,6 +4,7 @@ const teamRepository = require('./team.repository');
 const userRepository = require('../user/user.repository');
 const schoolRepository = require('../school/school.repository');
 const accountService = require('../account/account.service');
+const joinRequestService = require('./joinRequest.service');
 
 // 팀 소속 확인 헬퍼 — portfolio/teamOrder 등 "팀원만 접근 가능"한 기능들이 공유
 const requireTeamMembership = async (userId) => {
@@ -46,32 +47,13 @@ const createTeam = async (user_id, name, max_member_count, position) => {
   return { ...team, members };
 };
 
-const joinTeam = async (user_id, join_code, position) => {
-  const user = await userRepository.findById(user_id);
-  await requireTeamSchoolEligibility(user);
-
-  const existing = await teamRepository.findMembershipByUserId(user_id);
-  if (existing) {
-    throw new AppError('이미 팀에 소속되어 있습니다.', 409);
-  }
-
-  const team = await teamRepository.findByJoinCode(join_code);
-  if (!team) {
-    throw new AppError('유효하지 않은 가입 코드입니다.', 404);
-  }
-  if (team.school_id !== user.school_id) {
-    throw new AppError('같은 학교의 팀에만 가입할 수 있습니다.', 403);
-  }
-  if (team.current_member_count >= team.max_member_count) {
-    throw new AppError('팀 인원이 가득 찼습니다.', 409);
-  }
-
-  await teamRepository.joinTeam(team.id, user_id);
-  await userRepository.updatePosition(user_id, position);
-  const updated = await teamRepository.findById(team.id);
-  const members = await teamRepository.findMembersByTeamId(team.id);
-  return { ...updated, members };
-};
+// 가입 신청 (2026-09-09 정책 변경). 코드가 맞아도 바로 들어가지 않고 팀장 승인을 기다린다.
+// 검증·정책은 joinRequest.service가 갖는다 — 여기서는 얇게 위임만 한다.
+//
+// ⚠️ 응답이 바뀌었다. 이전에는 팀 정보(멤버 포함)를 돌려줘 "가입 완료"를 뜻했고,
+// 이제는 { request_id, status: PENDING, team }으로 "신청 접수"를 뜻한다.
+const joinTeam = async (user_id, join_code, position) =>
+  joinRequestService.requestJoin(user_id, join_code, position);
 
 const listTeams = async (user_id, { keyword, limit }) => {
   const user = await userRepository.findById(user_id);

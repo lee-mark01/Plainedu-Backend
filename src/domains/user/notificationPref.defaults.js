@@ -28,6 +28,9 @@ const NOTIFICATION_PREFS = {
     vote_start: true,        // Notifications.VOTE_START
     portfolio_changed: true, // Notifications.PORTFOLIO_CHANGED
   },
+  team: {
+    join_request: true, // Notifications.TEAM_JOIN_REQUEST — 팀장에게 가는 가입 신청 알림
+  },
   community: {
     followee_post: true,  // Notifications.FOLLOWEE_POST
     post_like: true,      // Notifications.POST_LIKE
@@ -62,4 +65,30 @@ const buildResponse = (savedByKey) =>
     ])
   );
 
-module.exports = { NOTIFICATION_PREFS, PREF_KEYS, isValidKey, buildResponse };
+// Notifications.type → 설정 키. 발송 직전에 이 유저가 그 종류를 켜뒀는지 확인하는 데 쓴다.
+// 여기 없는 종류는 설정으로 끌 수 없는 알림이라는 뜻이다(현재 전부 매핑돼 있다).
+const TYPE_TO_PREF_KEY = {
+  FOLLOWEE_POST: 'community.followee_post',
+  POST_LIKE: 'community.post_like',
+  POST_COMMENT: 'community.post_comment',
+  COMMENT_REPLY: 'community.comment_reply',
+  VOTE_START: 'invest.vote_start',
+  PORTFOLIO_CHANGED: 'invest.portfolio_changed',
+  TEAM_JOIN_REQUEST: 'team.join_request',
+};
+
+// 저장된 값이 없으면 기본값을 따른다 — 행이 없는 건 "기본값 그대로"라는 뜻이다.
+const defaultFor = (prefKey) => {
+  const [group, key] = prefKey.split('.');
+  return NOTIFICATION_PREFS[group]?.[key] ?? true;
+};
+
+module.exports = {
+  NOTIFICATION_PREFS,
+  PREF_KEYS,
+  isValidKey,
+  buildResponse,
+  TYPE_TO_PREF_KEY,
+  defaultFor,
+  PUSH_MASTER_KEY: 'service.push',
+};

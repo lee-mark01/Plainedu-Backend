@@ -95,26 +95,39 @@ const createTeamWithLeader = async (school_id, name, max_member_count, user_id) 
   }
 };
 
-// 트랜잭션 내에서 팀 가입 + 멤버 수 증가
-const joinTeam = async (team_id, user_id) => {
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    await conn.query(
-      'INSERT INTO TeamMembers (team_id, user_id, role) VALUES (?, ?, ?)',
-      [team_id, user_id, 'MEMBER']
-    );
-    await conn.query(
-      'UPDATE Teams SET current_member_count = current_member_count + 1 WHERE id = ?',
-      [team_id]
-    );
-    await conn.commit();
-  } catch (err) {
-    await conn.rollback();
-    throw err;
-  } finally {
-    conn.release();
-  }
+// 멤버 등록 + 인원수 증가. 두 문이 한 쌍이어야 한다 — current_member_count가 어긋나면
+// 정원 판정이 틀어진다.
+//
+// executor를 받는 이유: 가입 승인은 신청 상태 변경·포지션 설정과 한 트랜잭션이라
+// 이 함수가 자체 트랜잭션을 열면 안 된다. 단독 호출 시에는 pool로 두 문이 각각 커밋된다.
+const addMember = async (team_id, user_id, executor = pool) => {
+  await executor.query(
+    'INSERT INTO TeamMembers (team_id, user_id, role) VALUES (?, ?, ?)',
+    [team_id, user_id, 'MEMBER']
+  );
+  await executor.query(
+    'UPDATE Teams SET current_member_count = current_member_count + 1 WHERE id = ?',
+    [team_id]
+  );
+};
+
+// 정원 판정을 위해 팀을 잠근 채로 읽는다. 승인 두 건이 동시에 들어오면 둘 다 빈 자리를
+// 보고 통과해 정원을 넘길 수 있다.
+const findByIdForUpdate = async (team_id, conn) => {
+  const [rows] = await conn.query(
+    'SELECT id, school_id, name, max_member_count, current_member_count FROM Teams WHERE id = ? FOR UPDATE',
+    [team_id]
+  );
+  return rows[0] || null;
+};
+
+// 팀장 조회 — 가입 신청 알림 수신자.
+const findLeaderUserId = async (team_id, executor = pool) => {
+  const [rows] = await executor.query(
+    "SELECT user_id FROM TeamMembers WHERE team_id = ? AND role = 'LEADER' LIMIT 1",
+    [team_id]
+  );
+  return rows[0]?.user_id || null;
 };
 
 // ── 멤버 조작 ──
@@ -154,6 +167,16 @@ const removeMember = async (team_id, user_id, executor = pool) => {
 // 그건 의도된 것이다 — 과거 순위 기록은 팀이 사라져도 보존한다(target_name 스냅샷 참고).
 const deleteTeam = async (team_id, executor = pool) => {
   await executor.query('DELETE FROM Teams WHERE id = ?', [team_id]);
+};
+
+// ── 초대 코드 ──
+
+// 코드 재발급. 유출된 코드로 들어오는 스팸 신청을 끊는 유일한 수단이다 —
+// 승인제에서는 코드가 "가입 관문"이라 영구 고정이면 막을 방법이 없다.
+const rotateJoinCode = async (team_id, executor = pool) => {
+  const join_code = await createUniqueJoinCode();
+  await executor.query('UPDATE Teams SET join_code = ? WHERE id = ?', [join_code, team_id]);
+  return join_code;
 };
 
 // ── 팀 규칙 ──
@@ -200,11 +223,14 @@ module.exports = {
   findBySchool,
   findMembersByTeamId,
   createTeamWithLeader,
-  joinTeam,
+  addMember,
+  findByIdForUpdate,
+  findLeaderUserId,
   findMembersForUpdate,
   updateMemberRole,
   removeMember,
   deleteTeam,
   findRulesByTeamId,
   saveRules,
+  rotateJoinCode,
 };
