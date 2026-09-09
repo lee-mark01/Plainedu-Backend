@@ -10,6 +10,8 @@
     "seed:stocks": "node db/seeds/seed-stocks.js",
     "seed:users": "node db/seeds/seed-users.js",
     "seed:demo": "node db/seeds/seed-demo.js",
+    "seed:learning": "node db/seeds/seed-learning.js",
+    "seed:qa-features": "node db/seeds/seed-qa-features.js",
     "seed:main-qa": "node db/seeds/seed-main-qa.js",
     "cleanup:main-qa": "node db/seeds/cleanup-main-qa.js",
     "test": "node --test --test-force-exit tests/*.test.js",

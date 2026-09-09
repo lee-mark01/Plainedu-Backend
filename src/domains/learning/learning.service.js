@@ -1,4 +1,5 @@
 const learningRepository = require('./learning.repository');
+const quizAttemptRepository = require('./quizAttempt.repository');
 const { withTransaction } = require('../../config/db');
 const AppError = require('../../errors/AppError');
 const attendanceService = require('../user/attendance.service');
@@ -194,8 +195,19 @@ const submitQuizAnswer = async (userId, quizId, userAnswer) => {
 
   const isCorrect = gradeAnswer(quiz.type, answerData, userAnswer);
 
-  // 풀이 로그는 단건 INSERT (재도전 허용 — 같은 quiz_id 여러 row 가능).
-  await learningRepository.insertQuizLog(userId, quizId, isCorrect);
+  // 답안을 응시 회차에 붙인다. 진행 중인 회차가 없으면 이 답안이 회차의 시작이다.
+  //
+  // 트랜잭션인 이유: 문제 두 개를 거의 동시에 제출하면 두 요청이 모두 "진행 중 회차 없음"을
+  // 보고 각자 회차를 만들어, 한 응시가 두 회차로 쪼개진다. 잠금과 생성이 한 단위여야 한다.
+  await withTransaction(async (conn) => {
+    const open = await quizAttemptRepository.findOpenAttemptForUpdate(userId, quiz.topic_id, conn);
+    const attemptId = open
+      ? open.id
+      : await quizAttemptRepository.createAttempt(userId, quiz.topic_id, conn);
+
+    // 풀이 로그는 단건 INSERT (재도전 허용 — 같은 quiz_id 여러 row 가능).
+    await learningRepository.insertQuizLog(userId, quizId, isCorrect, attemptId, conn);
+  });
 
   return {
     quizId,
@@ -229,10 +241,18 @@ const completeQuizSession = async (userId, topicId) => {
     );
   }
 
-  // UserProgress 갱신
+  // UserProgress 갱신 — 여기 담기는 건 "현재 상태"(누적)다. 회차 이력은 QuizAttempts가 맡는다.
   await learningRepository.upsertProgressQuizDone(userId, topicId, summary.correct, summary.total);
 
   const score = Math.round((summary.correct / summary.total) * 100);
+
+  // 진행 중인 회차를 닫는다. 회차 점수는 **이번 응시에서 맞은 개수**로 센다 —
+  // 위 summary는 "한 번이라도 정답이면 정답"인 누적 기준이라 재도전 시 두 값이 갈린다.
+  // 이력 목록에 "2회차 100점"이 뜨는데 실제로 그 회차엔 한 문제만 맞혔다면 기록이 거짓이 된다.
+  //
+  // 분모는 그 회차에 푼 문제 수가 아니라 주제의 전체 문제 수(summary.total)다.
+  // 회차마다 분모가 달라지면 회차끼리 비교할 수 없고, 안 푼 문제는 못 맞힌 것으로 보는 게 맞다.
+  const attempt = await closeCurrentAttempt(userId, topicId, summary.total);
 
   return {
     topicId: topic.id,
@@ -241,7 +261,37 @@ const completeQuizSession = async (userId, topicId) => {
     correctCount: summary.correct,
     score,
     message: getScoreMessage(score),
+    // 이번 회차 기준 값. 기존 필드(누적)는 그대로 두고 additive로 추가한다 —
+    // 프론트가 완료 화면에서 어느 쪽을 보여줄지 고를 수 있고, 이력 목록과 숫자가 맞는다.
+    attempt,
   };
+};
+
+// 진행 중인 회차를 집계해 닫는다. 회차가 없으면(답안 없이 완료를 부르거나 이미 닫힌 경우)
+// null을 돌려주고 기존 동작만 남는다 — 완료를 두 번 눌러도 점수가 뒤바뀌지 않는다.
+const closeCurrentAttempt = async (userId, topicId, totalQuizCount) => {
+  return withTransaction(async (conn) => {
+    const open = await quizAttemptRepository.findOpenAttemptForUpdate(userId, topicId, conn);
+    if (!open) return null;
+
+    const correctCount = await quizAttemptRepository.countCorrectInAttempt(open.id, conn);
+    const attemptScore = totalQuizCount > 0
+      ? Math.round((correctCount / totalQuizCount) * 100)
+      : 0;
+
+    await quizAttemptRepository.completeAttempt(
+      open.id,
+      { correct_count: correctCount, total_quiz_count: totalQuizCount, score: attemptScore },
+      conn
+    );
+
+    return {
+      attemptId: open.id,
+      correctCount,
+      totalQuestions: totalQuizCount,
+      score: attemptScore,
+    };
+  });
 };
 
 // =============================================================================

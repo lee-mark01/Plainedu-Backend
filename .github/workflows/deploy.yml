@@ -45,5 +45,6 @@ jobs:
             docker compose build app
             docker compose up -d
             docker compose exec -T app npm run migrate
+            docker compose exec -T app npm run seed:learning
             docker compose exec -T app npm run seed:main-qa
             curl --fail --silent --show-error http://localhost:3000/api/health >/dev/null

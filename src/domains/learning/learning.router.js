@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const learningController = require('./learning.controller');
+const quizAttemptController = require('./quizAttempt.controller');
 const authMiddleware = require('../../middlewares/authenticate');
 const validate = require('../../middlewares/validate');
 const {
@@ -9,6 +10,7 @@ const {
   topicIdSchema,
   shortformIdSchema,
   topicsQuerySchema,
+  quizResultsQuerySchema,
 } = require('./learning.validator');
 
 // 모든 학습 API는 로그인 필수
@@ -19,6 +21,14 @@ router.get(
   '/topics',
   validate(topicsQuerySchema, 'query'),
   learningController.getTopics
+);
+
+// 1-2. 퀴즈 응시 이력 (요청 21)
+// 고정 경로라 ':topicId'를 쓰는 경로들과 충돌하지 않지만, 조회 계열끼리 모아둔다.
+router.get(
+  '/quiz-results',
+  validate(quizResultsQuerySchema, 'query'),
+  quizAttemptController.getQuizResults
 );
 
 // 2. 숏폼 목록 (좋아요/저장/완료 상태 포함)

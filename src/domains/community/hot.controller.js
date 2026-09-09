@@ -13,7 +13,7 @@ const getHotStocks = async (req, res, next) => {
 const getPopularPosts = async (req, res, next) => {
   try {
     const { limit } = req.validated;
-    const posts = await hotService.getPopularPosts(limit);
+    const posts = await hotService.getPopularPosts(limit, req.user?.userId);
     res.status(200).json({ success: true, data: posts });
   } catch (err) {
     next(err);

@@ -16,8 +16,10 @@ const tradingRouter = require('./domains/trading/trading.router');
 const accountRouter = require('./domains/account/account.router');
 const rankingRouter = require('./domains/ranking/ranking.router');
 const communityRouter = require('./domains/community/community.router');
+const adminRouter = require('./domains/admin/admin.router');
 const schoolRouter = require('./domains/school/school.router');
 const stockRouter = require('./domains/stock/stock.router');
+const stockAlertRouter = require('./domains/stockAlert/stockAlert.router');
 const portfolioRouter = require('./domains/portfolio/portfolio.router');
 
 const app = express();
@@ -41,8 +43,10 @@ app.use('/api/trading', tradingRouter);
 app.use('/api/accounts', accountRouter);
 app.use('/api/ranking', rankingRouter);
 app.use('/api/community', communityRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/schools', schoolRouter);
 app.use('/api/stocks', stockRouter);
+app.use('/api/stock-alerts', stockAlertRouter);
 app.use('/api/portfolios', portfolioRouter);
 
 // API 문서 (Swagger UI) — 스펙 원본은 docs/openapi.yaml.

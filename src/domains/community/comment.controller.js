@@ -42,7 +42,7 @@ const deleteComment = async (req, res, next) => {
 const getCommentsByPostId = async (req, res, next) => {
     try {
         const post_id = Number(req.params.post_id);
-        const comments = await commentService.getCommentsByPostId(post_id);
+        const comments = await commentService.getCommentsByPostId(post_id, req.user?.userId);
         res.status(200).json({ success: true, data: comments });
     } catch (err) {
         next(err);

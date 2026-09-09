@@ -46,8 +46,9 @@ const deletePost = async (post_id, user_id) => {
 };
 
 // 단일 게시글 조회
-const getPostById = async (post_id) => {
-  const post = await communityRepository.findById(post_id);
+// viewer_id는 차단 필터용이다. 차단 관계면 목록뿐 아니라 단건도 안 보여야 한다.
+const getPostById = async (post_id, viewer_id) => {
+  const post = await communityRepository.findById(post_id, viewer_id);
   if (!post) {
     throw new AppError('Post not found', 404);
   }
@@ -55,8 +56,8 @@ const getPostById = async (post_id) => {
 };
 
 // cursor 기반 페이지네이션 posts + hasNext(다음 페이지 존재 여부)
-const getPostsByCursor = async ({ cursor, limit, post_type, stock_code, keyword, search_type, user_id }) => {
-  const posts = await communityRepository.findByCursor({ cursor, limit: limit+1, post_type, stock_code, keyword, search_type, user_id } ); // 다음 페이지 존재 여부 확인 위해 limit+1개 조회
+const getPostsByCursor = async ({ cursor, limit, post_type, stock_code, keyword, search_type, user_id, viewer_id }) => {
+  const posts = await communityRepository.findByCursor({ cursor, limit: limit+1, post_type, stock_code, keyword, search_type, user_id, viewer_id } ); // 다음 페이지 존재 여부 확인 위해 limit+1개 조회
   const hasNext = posts.length === limit+1; // limit+1개 조회됐으면 다음 페이지 존재
   if (hasNext) {
     posts.pop(); // 다음 페이지 존재 여부 확인 위해 조회한 마지막 게시글 제거

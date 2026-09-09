@@ -13,8 +13,10 @@ test('인증 라우터가 카카오·네이버 start와 일회용 ticket 교환�
   assert.match(source, /router\.get\('\/kakao\/start', authController\.kakaoStart\)/);
   assert.match(source, /router\.get\('\/naver\/start', authController\.naverStart\)/);
   assert.match(source, /router\.post\('\/oauth-ticket', authController\.oauthTicket\)/);
-  assert.match(source, /router\.post\('\/kakao', authController\.kakaoLogin\)/);
-  assert.match(source, /router\.post\('\/naver', authController\.naverLogin\)/);
+  // 기존 직접 교환 endpoint가 살아있는지만 본다. 사이에 미들웨어(rateLimit 등)가 붙는 건 무관하므로
+  // 경로와 컨트롤러만 고정한다 — 리미터를 달 때마다 이 테스트가 깨지면 안 된다.
+  assert.match(source, /router\.post\('\/kakao',[^\n]*authController\.kakaoLogin\)/);
+  assert.match(source, /router\.post\('\/naver',[^\n]*authController\.naverLogin\)/);
 });
 test('공급자 callback은 전용 컨트롤러를 사용하고 URL에 세션 토큰을 넣지 않는다', () => {
   const appSource = read('src/app.js');

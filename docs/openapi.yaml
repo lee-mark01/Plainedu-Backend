@@ -69,6 +69,8 @@ tags:
     description: 가상계좌 평가 · 자산 추이
   - name: portfolio
     description: 모델포트폴리오(MP) 작성·투표·전략 준수도
+  - name: admin
+    description: 관리자 전용 (`Users.role = ADMIN`) — 신고 검토 · 이용 제한 · 이의신청 처리
   - name: ranking
     description: 시즌 리그 (개인 · 팀 · 소속 2종)
   - name: system
@@ -89,7 +91,7 @@ paths:
         - $ref: '#/components/parameters/OAuthReturnTo'
       responses:
         '302': { description: 카카오 authorization URL로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '`return_to`가 allowlist 밖(`OAUTH_RETURN_TO_INVALID`) / 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`) / 공급자 설정 누락(`OAUTH_CONFIG_MISSING`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/naver/start:
@@ -102,7 +104,7 @@ paths:
         - $ref: '#/components/parameters/OAuthReturnTo'
       responses:
         '302': { description: 네이버 authorization URL로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '`return_to`가 allowlist 밖(`OAUTH_RETURN_TO_INVALID`) / 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`) / 공급자 설정 누락(`OAUTH_CONFIG_MISSING`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/oauth-ticket:
@@ -119,7 +121,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'ticket이 없거나 이미 사용됨·만료됨 (`OAUTH_TICKET_INVALID`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/kakao:
@@ -252,7 +254,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'Firebase 토큰 누락(`FIREBASE_TOKEN_REQUIRED`) 또는 토큰에 이메일 없음(`FIREBASE_EMAIL_REQUIRED`)' }
         '401':
           description: Firebase 토큰이 유효하지 않음 (`FIREBASE_TOKEN_INVALID`)
           content:
@@ -267,6 +269,19 @@ paths:
       description: |
         QA 기간에만 활성화되는 PIN 기반 로그인이다.
         메인 DB의 전용 더미 계정과 투자 fixture에 접속하며 세션은 8시간 뒤 만료된다.
+
+        `persona`로 접속할 시드 계정을 고른다. 화이트리스트이므로 임의 이메일로는 로그인할 수 없고,
+        생략하면 `leader`다. 응답의 `user.role`로 관리자 여부를 확인할 수 있다.
+
+        | persona | 계정 상태 | 확인할 수 있는 것 |
+        |---|---|---|
+        | `leader` (기본) | 팀장(Trader), 학교 인증, 휴대폰 인증 | 팀·투자·모델포트폴리오, 차단 목록 |
+        | `member` | 팀원(Analyst) | 포트폴리오 작성·투표, 퀴즈 응시 이력 |
+        | `solo` | 팀 없음, 학교 인증 | 팀 가입 신청(대기 중 1건) |
+        | `restricted` | 커뮤니티 제한 중(7일) | 글쓰기 403 `COMMUNITY_RESTRICTED`, 이의신청 |
+        | `unverified` | 학교 미인증, 휴대폰 번호만 입력 | 학교·휴대폰 인증 유도 |
+        | `noschool` | 학교 없음, 약관 미동의 | 온보딩 초기 상태 |
+        | `admin` | `role = ADMIN` | `/api/admin/*` 신고·제재·이의신청 |
       security: []
       requestBody:
         required: true
@@ -280,9 +295,14 @@ paths:
                   type: string
                   pattern: '^\\d{6,12}$'
                   example: '000000'
+                persona:
+                  type: string
+                  description: 접속할 시드 계정. 생략하면 `leader`.
+                  enum: [leader, member, solo, restricted, unverified, noschool, admin]
+                  example: admin
       responses:
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: PIN 형식 오류 또는 알 수 없는 persona (`QA_PERSONA_UNKNOWN`) }
         '401': { description: QA PIN 불일치 (`QA_PIN_INVALID`) }
         '404': { description: QA 로그인 비활성화 (`QA_AUTH_DISABLED`) }
         '429': { description: QA PIN 요청 한도 초과 (`RATE_LIMITED`) }
@@ -303,8 +323,9 @@ paths:
                 email: { type: string, format: email }
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '대학 도메인이 아닌 이메일 (`INVALID_UNIVERSITY_EMAIL`)' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 발송은 시간당 3회. }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/email/verify:
@@ -325,6 +346,77 @@ paths:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 5분당 10회. }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/phone/send:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 발송
+      description: |
+        입력한 번호로 6자리 인증번호를 SMS 발송한다. 하이픈은 서버가 제거하므로
+        `010-1234-5678`과 `01012345678` 중 무엇을 보내도 된다.
+
+        응답의 `cooldown_seconds`(재발송까지 남은 초)와 `expires_in_seconds`(인증번호 유효시간)로
+        프론트 타이머를 띄우면 된다. 쿨다운 중 재요청하면 `429 RESEND_COOLDOWN`이고,
+        메시지에 남은 초가 담긴다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, example: '01012345678' }
+      responses:
+        '200':
+          description: 발송 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          cooldown_seconds: { type: integer, example: 30 }
+                          expires_in_seconds: { type: integer, example: 180 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`) }
+        '429': { description: 재발송 쿨다운(`RESEND_COOLDOWN`) 또는 요청 한도 초과(`RATE_LIMITED`). 발송은 시간당 3회. }
+        '502': { description: SMS 발송 실패 (`SMS_SEND_FAILED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/auth/phone/verify:
+    post:
+      tags: [auth]
+      summary: 휴대폰 인증번호 확인
+      description: |
+        인증번호가 맞으면 번호를 계정에 저장한다. 저장 결과는 `GET /api/users/me`의
+        `phone` 필드로 확인한다.
+
+        실패 사유는 `code`로 구분된다 — `CODE_EXPIRED`(만료·미발송),
+        `CODE_MISMATCH`(불일치), `PHONE_ALREADY_USED`(다른 계정이 선점).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: { type: string, example: '01012345678' }
+                code: { type: string, pattern: '^\\d{6}$' }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '400': { description: 인증번호 만료(`CODE_EXPIRED`) 또는 불일치(`CODE_MISMATCH`) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: 이미 다른 계정에서 인증된 번호 (`PHONE_ALREADY_USED`) }
+        '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 5분당 10회. }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/logout:
@@ -370,7 +462,7 @@ paths:
           description: 백엔드가 발급하고 검증하는 CSRF state
       responses:
         '302': { description: 허용된 프론트 callback으로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'state 불일치·만료(`OAUTH_STATE_INVALID`) 또는 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`)' }
 
   # ───────────────────────────── user ─────────────────────────────
   /api/users:
@@ -474,6 +566,147 @@ paths:
                 message: 회원 탈퇴가 완료되었습니다.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/me/agreements:
+    patch:
+      tags: [user]
+      summary: 약관·개인정보·마케팅 동의 저장
+      description: |
+        온보딩 동의 화면과 마이페이지 설정이 함께 쓴다. **보낸 항목만 갱신하는 부분 수정**이라
+        마케팅만 끄는 요청도 그대로 보내면 된다.
+
+        동의 시각과 동의 당시의 약관 버전은 서버가 함께 기록한다.
+
+        조회용 API는 따로 없다 — `GET /api/users/me`의 `agreements` 필드가 담당한다.
+        온보딩 진행 판정이 한 번의 호출로 끝나야 해서다.
+
+        필수 항목(`terms`, `privacy`)은 `true`만 받는다. 가입 상태에서 필수 동의를 철회한
+        모호한 계정을 만들지 않기 위해서이며, 철회는 `DELETE /api/users/me`(탈퇴) 소관이다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                terms: { type: boolean, enum: [true], description: 서비스 이용약관 (필수) }
+                privacy: { type: boolean, enum: [true], description: 개인정보 처리방침 (필수) }
+                marketing: { type: boolean, description: 마케팅 수신 (선택, 철회 가능) }
+              example:
+                terms: true
+                privacy: true
+                marketing: false
+      responses:
+        '200':
+          description: 갱신된 전체 동의 상태
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Agreements' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/users/me/notification-prefs:
+    get:
+      tags: [user]
+      summary: 알림 수신 설정 조회
+      description: |
+        저장된 값이 없는 신규 사용자에게도 **전 항목이 채워진 상태**로 내려간다. 서버 기본값을
+        덮어 만들기 때문에 `undefined`가 섞이지 않는다.
+
+        항목은 실제로 발송되는 알림에 대응한다 — `community` 넷과 `invest`의 `vote_start`·
+        `portfolio_changed`는 `Notifications.type`에, `invest.stock_alert`는 종목별 알림에 붙는다.
+        `service.notice`와 `learning.reminder`는 **아직 보내는 쪽이 없다** — 설정 화면에
+        자리를 먼저 만든 것이고, 값은 저장되며 발송이 붙을 때 존중된다.
+
+        `service.push`는 마스터 스위치다. 꺼지면 나머지 값과 무관하게 푸시를 보내지 않는다.
+
+        마케팅 수신 동의는 여기 없다 — `PATCH /api/users/me/agreements`의 `marketing`이 담당한다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPrefs' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [user]
+      summary: 알림 수신 설정 수정
+      description: |
+        **보낸 항목만 갱신한다.** 그룹 하나, 항목 하나만 보내도 되고 나머지 설정은 그대로 남는다.
+
+        정의에 없는 그룹·항목은 `400`으로 거부한다 — 오타를 조용히 삼키면 프론트는 저장됐다고
+        믿는데 서버에는 아무것도 남지 않는다.
+
+        응답은 갱신 후 **전체 상태**라 저장 직후 다시 조회할 필요가 없다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: 그룹·항목 모두 선택. 최소 하나는 보내야 한다.
+              properties:
+                service:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    push: { type: boolean }
+                    notice: { type: boolean }
+                learning:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    reminder: { type: boolean }
+                invest:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    stock_alert: { type: boolean }
+                    vote_start: { type: boolean }
+                    portfolio_changed: { type: boolean }
+                team:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    join_request: { type: boolean }
+                community:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    followee_post: { type: boolean }
+                    post_like: { type: boolean }
+                    post_comment: { type: boolean }
+                    comment_reply: { type: boolean }
+              example:
+                community: { post_like: false }
+      responses:
+        '200':
+          description: 갱신 후 전체 설정
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NotificationPrefs' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/users/attendance/check-in:
@@ -708,8 +941,25 @@ paths:
   /api/teams/join:
     post:
       tags: [team]
-      summary: 팀 가입
-      description: '가입 코드(8자)로 참여한다. **같은 학교 팀만** 가능. 요청자의 `position`도 함께 갱신된다.'
+      summary: 팀 가입 신청
+      description: |
+        가입 코드(8자)를 맞게 입력하면 **가입 신청**이 접수되고, 팀장이 승인해야 팀에 들어간다.
+        **같은 학교 팀만** 신청할 수 있다.
+
+        > ⚠️ **동작이 바뀌었다.** 이전에는 코드만으로 즉시 가입돼 팀 상세를 돌려줬다.
+        > 이제는 신청 결과(`request_id`, `status: PENDING`)를 돌려주므로 화면도
+        > "가입 완료"가 아니라 "승인 대기"로 표시해야 한다.
+
+        정책:
+        - **정원이 찬 팀에는 신청할 수 없다** (409 `TEAM_FULL`) — 승인될 수 없는 신청을 받으면
+          헛된 대기가 생긴다
+        - **대기 중 신청은 하나만.** 다른 팀에 새로 신청하면 기존 대기 건이 자동 취소된다
+        - 같은 팀에 중복 신청은 409 `ALREADY_REQUESTED`
+        - 거절된 뒤 다시 신청할 수 있다 (쿨다운 없음)
+        - 신청 시 **팀장에게 알림**이 간다 (`TEAM_JOIN_REQUEST`)
+
+        `position`은 신청 시 받아두고 **승인 시점에 적용된다** — 팀장이 신청자의 포지션을
+        대신 고를 수는 없다.'
       requestBody:
         required: true
         content:
@@ -727,7 +977,7 @@ paths:
                 position: { $ref: '#/components/schemas/Position' }
       responses:
         '200':
-          description: 가입 완료 (팀 상세 반환)
+          description: 신청 접수 (아직 팀원이 아니다)
           content:
             application/json:
               schema:
@@ -735,21 +985,30 @@ paths:
                   - $ref: '#/components/schemas/Success'
                   - type: object
                     properties:
-                      data: { $ref: '#/components/schemas/Team' }
+                      data:
+                        type: object
+                        properties:
+                          request_id: { type: integer, example: 31 }
+                          status: { type: string, enum: [PENDING] }
+                          team:
+                            type: object
+                            properties:
+                              id: { type: integer, example: 5 }
+                              name: { type: string, example: Investars }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: 학교 선택 또는 대학 이메일 인증 필요 / 다른 학교의 팀
+          description: 학교 선택 또는 대학 이메일 인증 필요 / 다른 학교의 팀 (`SCHOOL_MISMATCH`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '404':
-          description: 유효하지 않은 가입 코드
+          description: 유효하지 않은 가입 코드 (`INVALID_JOIN_CODE`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '409':
-          description: 이미 팀 소속 / 정원 초과
+          description: 이미 팀 소속(`ALREADY_IN_TEAM`) / 정원 초과(`TEAM_FULL`) / 중복 신청(`ALREADY_REQUESTED`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -779,6 +1038,371 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [team]
+      summary: 팀 해체
+      description: |
+        팀장만 호출할 수 있다. 팀원·포트폴리오·팀 계좌·팀 주문·보유종목이 함께 삭제되며 복구할 수 없다.
+        팀원 전원의 투자 포지션은 `NONE`으로 돌아간다.
+
+        과거 순위 기록(`DailyRankings`)은 남는다 — 확정 시점의 팀 이름을 함께 저장해두므로
+        팀이 사라진 뒤에도 지난 순위표를 읽을 수 있다.
+      responses:
+        '200':
+          description: 해체 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          result: { type: string, enum: [DISBANDED] }
+                          team_id: { type: integer, example: 5 }
+                          removed_members: { type: integer, example: 3 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/exit-options:
+    get:
+      tags: [team]
+      summary: 팀 탈퇴 가능 조건
+      description: |
+        탈퇴 화면이 무엇을 보여줄지 서버가 판정해서 내려준다. 프론트가 인원수·역할로 조건을
+        추측하지 않도록 가능한 행동과 불가능한 이유를 함께 준다.
+
+        `leave_effect`가 `POST /leave`를 눌렀을 때 실제로 일어날 일이다.
+        `LEAVE`(그냥 탈퇴) · `AUTO_DELEGATE`(가장 오래된 팀원에게 자동 위임 후 탈퇴) ·
+        `DISBAND`(혼자라서 탈퇴가 곧 해체).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamExitOptions' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음 }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/leave:
+    post:
+      tags: [team]
+      summary: 팀 탈퇴
+      description: |
+        상황에 따라 결과가 갈린다. 무엇이 일어날지는 `GET /api/teams/me/exit-options`의
+        `leave_effect`로 미리 알 수 있다.
+
+        - 일반 팀원 → `LEFT`
+        - 팀장이고 다른 팀원이 있음 → 가장 오래된 팀원에게 자동 위임 후 탈퇴 (`DELEGATED_AND_LEFT`)
+        - 팀장이고 혼자 → 팀 해체 (`DISBANDED`)
+
+        어느 경로든 한 트랜잭션이라 위임만 되고 탈퇴가 안 되는 중간 상태는 생기지 않는다.
+        탈퇴한 사람의 투자 포지션은 `NONE`으로 돌아간다.
+      responses:
+        '200':
+          description: 탈퇴 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamLeaveResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음 }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/delegate-and-leave:
+    post:
+      tags: [team]
+      summary: 팀장 위임 후 탈퇴
+      description: |
+        넘겨받을 팀원을 직접 고르는 경로다. 아무나 상관없으면 `POST /api/teams/me/leave`가
+        가장 오래된 팀원에게 알아서 위임한다. 위임과 탈퇴는 원자적으로 처리된다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: integer
+                  description: 팀장을 넘겨받을 팀원. `exit-options`의 `delegatable_members`에서 고른다.
+                  example: 12
+      responses:
+        '200':
+          description: 위임 후 탈퇴 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamLeaveResult' }
+        '400': { description: 자기 자신에게 위임 시도 (`INVALID_SUCCESSOR`) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '404': { description: 같은 팀의 팀원이 아님 (`MEMBER_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/invitations:
+    get:
+      tags: [team]
+      summary: 초대 코드 조회
+      description: |
+        팀장만 볼 수 있다. 승인제에서 코드는 즉시 가입 열쇠가 아니라 **신청 관문**이다.
+
+        `remaining_slots`가 0이면 신청 자체가 막히므로 프론트가 미리 안내할 수 있다.
+
+        `is_expired`는 항상 `false`다 — 시간 만료를 두지 않았다. 팀장이 모르는 사이 코드가
+        죽어 신입이 못 들어오는 상황을 만들지 않기 위해서다. 실제 만료는 **재발급**으로 표현한다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamInvitation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음(`NO_TEAM`) 또는 팀장이 아님(`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [team]
+      summary: 초대 코드 재발급
+      description: |
+        팀장만 호출할 수 있다. 새 코드를 만들고 **이전 코드는 즉시 무효**가 된다.
+
+        코드가 유출돼 스팸 신청이 들어올 때 끊는 유일한 수단이다 — 지금까지 코드는 팀 생성 시
+        한 번 만들어지고 영구 고정이었다.
+      responses:
+        '200':
+          description: 재발급된 코드
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamInvitation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음(`NO_TEAM`) 또는 팀장이 아님(`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/join-requests:
+    get:
+      tags: [team]
+      summary: 가입 신청 목록
+      description: |
+        팀장만 볼 수 있다. **대기 건이 먼저**, 그다음 최근 처리 순으로 온다.
+        `status`로 걸러볼 수 있고, 생략하면 전체 이력이다.
+
+        신청자 닉네임과 희망 포지션을 함께 주므로 목록마다 유저를 다시 조회할 필요가 없다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED] }
+          description: 생략하면 전체
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          requests:
+                            type: array
+                            items: { $ref: '#/components/schemas/TeamJoinRequest' }
+                          pagination:
+                            type: object
+                            properties:
+                              page: { type: integer, example: 1 }
+                              limit: { type: integer, example: 20 }
+                              total: { type: integer, example: 3 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [team]
+      summary: 가입 신청 승인·거절
+      description: |
+        팀장만 호출할 수 있다. 승인과 멤버 등록이 **한 트랜잭션**이라 "승인은 됐는데 팀원이
+        아닌" 상태가 생기지 않는다.
+
+        승인 시 두 가지를 **다시** 확인한다 — 신청 시점과 승인 시점 사이에 상황이 바뀔 수 있다:
+        - 정원이 그 사이 찼으면 409 `TEAM_FULL`
+        - 신청자가 그 사이 다른 팀에 들어갔으면 409 `APPLICANT_IN_TEAM`
+
+        같은 신청을 두 번 처리하거나 두 팀장이 동시에 누르면 **첫 판정만 적용**되고
+        409 `REQUEST_ALREADY_PROCESSED`가 난다.
+
+        승인되면 신청 시 받아둔 `position`이 신청자에게 적용된다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, decision]
+              properties:
+                request_id: { type: integer, example: 31 }
+                decision: { type: string, enum: [APPROVE, REJECT] }
+      responses:
+        '200':
+          description: 처리 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          request_id: { type: integer, example: 31 }
+                          status: { type: string, enum: [APPROVED, REJECTED] }
+                          user_id:
+                            type: integer
+                            description: 승인일 때만 담긴다
+                            example: 12
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '404': { description: 우리 팀의 신청이 아님 (`REQUEST_NOT_FOUND`) }
+        '409': { description: 이미 처리됨(`REQUEST_ALREADY_PROCESSED`) / 정원 초과(`TEAM_FULL`) / 신청자가 다른 팀 소속(`APPLICANT_IN_TEAM`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/rules:
+    get:
+      tags: [team]
+      summary: 팀 규칙 조회
+      description: |
+        규칙을 아직 쓰지 않은 팀은 `content: null`, `version: 0`으로 내려간다 — 오류가 아니라
+        빈 상태이므로 작성 안내를 띄우면 된다.
+
+        저장할 때 여기서 받은 `version`을 그대로 돌려보내야 한다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamRules' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음 }
+        '500': { $ref: '#/components/responses/ServerError' }
+    put:
+      tags: [team]
+      summary: 팀 규칙 저장
+      description: |
+        팀장만 저장할 수 있다. 조회할 때 받은 `version`을 함께 보내며, 그 사이 다른 사람이
+        먼저 저장했으면 `409 RULES_VERSION_CONFLICT`가 난다 — 규칙은 자유 텍스트라 병합할
+        수단이 없어서 덮어쓰는 대신 다시 읽도록 한다. 규칙이 없던 팀의 첫 저장은 `version: 0`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content, version]
+              properties:
+                content: { type: string, minLength: 1, maxLength: 5000 }
+                version: { type: integer, minimum: 0, description: 조회 시 받은 값. 첫 저장은 0. }
+      responses:
+        '200':
+          description: 저장된 규칙
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamRules' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '409': { description: 그 사이 다른 팀원이 먼저 저장함 (`RULES_VERSION_CONFLICT`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/members/{userId}/role:
+    patch:
+      tags: [team]
+      summary: 팀원 역할·포지션 변경
+      description: |
+        팀장만 호출할 수 있다. `role`과 `position` 중 최소 하나를 보낸다.
+
+        `role: LEADER`는 곧 **위임**이다 — 대상이 팀장이 되고 요청한 팀장은 같은 트랜잭션에서
+        `MEMBER`로 내려간다. 팀장이 위임 없이 스스로 `MEMBER`가 되려 하면 팀장 없는 팀이
+        되므로 `409 LAST_LEADER`로 막는다.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+          description: 변경할 팀원
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                role: { type: string, enum: [LEADER, MEMBER] }
+                position: { type: string, enum: [TRADER, ANALYST] }
+      responses:
+        '200':
+          description: 변경 후 팀 정보
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '404': { description: 같은 팀의 팀원이 아님 (`MEMBER_NOT_FOUND`) }
+        '409': { description: 마지막 팀장이 위임 없이 강등을 시도 (`LAST_LEADER`) }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/teams/me/account:
@@ -1034,7 +1658,21 @@ paths:
     post:
       tags: [learning]
       summary: 퀴즈 세션 완료 (결과 페이지)
-      description: '주제의 **모든 문제를 한 번씩은** 풀어야 완료된다. 미완이면 400 `QUIZ_NOT_FINISHED`.'
+      description: |
+        주제의 **모든 문제를 한 번씩은** 풀어야 완료된다. 미완이면 400 `QUIZ_NOT_FINISHED`.
+
+        응답에 숫자가 두 벌 있다. **기준이 다르므로 화면 목적에 맞게 골라 쓴다.**
+
+        - `correctCount`·`score` — **누적** 기준. "한 번이라도 정답이면 정답"이라
+          재도전할수록 올라간다. `UserProgress`에 저장되는 값이고 기존 계약이다.
+        - `attempt` — **이번 회차** 기준. 이 응시에서 실제로 맞은 개수이며
+          `GET /api/learning/quiz-results`의 이력과 같은 값이다.
+
+        재도전이 없으면 두 값이 같고, 재도전할 때만 갈린다. 완료 화면에서 누적을 보여주면
+        이력 목록의 점수와 달라 보이므로, 회차 점수를 쓰는 쪽이 일관된다.
+
+        `attempt`는 답안 없이 완료를 부르거나 이미 닫힌 회차면 `null`이다 —
+        완료를 두 번 눌러도 첫 결과가 유지된다.
       parameters:
         - $ref: '#/components/parameters/TopicId'
       responses:
@@ -1061,6 +1699,57 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/learning/quiz-results:
+    get:
+      tags: [learning]
+      summary: 퀴즈 응시 이력
+      description: |
+        **완료된 회차만** 최신순으로 내려간다. 문제만 풀고 완료를 누르지 않은 회차는 이력이
+        아니므로 나오지 않는다.
+
+        점수는 **확정 시점 스냅샷**이다. 로그에서 다시 계산하지 않으므로, 나중에 그 주제에
+        퀴즈가 추가·삭제돼도 과거 회차의 점수가 바뀌지 않는다.
+
+        `total_quiz_count`는 그 회차에 푼 문제 수가 아니라 **주제의 전체 문제 수**다.
+        회차마다 분모가 달라지면 회차끼리 비교할 수 없고, 안 푼 문제는 못 맞힌 것으로 본다.
+
+        총 개수를 함께 주므로 `page`/`limit` 방식이다(커뮤니티 피드의 cursor와 다름).
+
+        > 이 이력은 이 기능이 배포된 이후의 응시부터 쌓인다. 그 전 기록에는 회차 정보가
+        > 없어 소급해서 묶을 수 없다.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          results:
+                            type: array
+                            items: { $ref: '#/components/schemas/QuizResult' }
+                          pagination:
+                            type: object
+                            properties:
+                              page: { type: integer, example: 1 }
+                              limit: { type: integer, example: 20 }
+                              total: { type: integer, example: 7 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   # ─────────────────────────── community ──────────────────────────
   /api/community/posts:
     post:
@@ -1085,6 +1774,7 @@ paths:
                       data: { $ref: '#/components/schemas/Post' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '500': { $ref: '#/components/responses/ServerError' }
     get:
       tags: [community]
@@ -1207,7 +1897,7 @@ paths:
                       data: { $ref: '#/components/schemas/Post' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { description: '권한 없음(작성자 아님) 또는 이용 제한 중 (`COMMUNITY_RESTRICTED`)' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:
@@ -1283,6 +1973,7 @@ paths:
                       data: { $ref: '#/components/schemas/Comment' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404':
           description: 게시글 또는 부모 댓글 없음
           content:
@@ -1344,7 +2035,7 @@ paths:
                       data: { $ref: '#/components/schemas/Comment' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { description: '권한 없음(작성자 아님) 또는 이용 제한 중 (`COMMUNITY_RESTRICTED`)' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:
@@ -1388,6 +2079,7 @@ paths:
                         properties:
                           liked: { type: boolean, example: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -1412,6 +2104,7 @@ paths:
                         properties:
                           liked: { type: boolean, example: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -1500,6 +2193,63 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/ServerError' }
 
+  /api/community/users/suggested:
+    get:
+      tags: [community]
+      summary: 추천 사용자
+      description: |
+        팔로우할 만한 사용자를 추천한다. 신호 두 가지를 합산한다 —
+        **관심사 유사도**(내 관심종목과 겹치는 종목 수)와 **활동량**(최근 30일 작성 글 수).
+        관심사에 가중치를 더 준다: 활동량만 높은 사람은 아무에게나 추천되지만, 겹치는 관심
+        종목은 그 사람에게만 해당하는 이유이기 때문이다.
+
+        본인·이미 팔로우한 사람·차단 관계(양방향)는 제외된다. 그래서 `is_following`은 항상
+        `false`지만, 프론트가 목록에서 바로 팔로우 버튼 상태를 다루도록 필드로 내려준다.
+
+        `shared_interests`는 **추천 이유**다 — "관심종목 3개가 겹쳐요" 같은 표시에 쓴다.
+
+        추천할 근거가 하나도 없으면 빈 배열이다. 가입 초기나 관심종목을 담지 않은 사용자에게는
+        자연스러운 상태이고, 억지로 채우면 추천의 의미가 사라진다.
+
+        > 요청서의 "배지"는 담지 않았다. 백엔드에 사용자 배지 개념이 없다 — 정의가 정해지면
+        > additive로 추가한다.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                user_id: { type: integer, example: 12 }
+                                nickname: { type: string, example: 인천인 }
+                                is_following: { type: boolean, example: false }
+                                shared_interests:
+                                  type: integer
+                                  description: 겹치는 관심종목 수 (추천 이유)
+                                  example: 3
+                                recent_post_count:
+                                  type: integer
+                                  description: 최근 30일 작성 글 수
+                                  example: 7
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
   /api/community/users/{user_id}/follow:
     post:
       tags: [community]
@@ -1523,6 +2273,7 @@ paths:
                           followed: { type: boolean, example: true }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/community/users/{user_id}/follow/counts:
@@ -1569,6 +2320,279 @@ paths:
         - $ref: '#/components/parameters/UserIdParam'
       responses:
         '200': { $ref: '#/components/responses/FollowListOk' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/reports:
+    post:
+      tags: [community]
+      summary: 게시글·댓글·사용자 신고
+      description: |
+        접수만 한다. 제재를 부과하는 주체(운영자 도구·누적 규칙)가 아직 없어 `status`는
+        `RECEIVED`에서 시작한다.
+
+        같은 대상은 한 번만 신고할 수 있다 — 중복 접수를 허용하면 신고 수를 제재 근거로 쓸 때
+        한 사람이 수치를 부풀릴 수 있어서다. 이미 신고했으면 `409 ALREADY_REPORTED`.
+
+        `reason`이 `ETC`면 `detail`이 필수다. 삭제된 글·댓글도 접수는 받는다 —
+        신고 화면을 열어둔 사이 지워질 수 있고, 막으면 이유 없는 실패로 보인다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id, reason]
+              properties:
+                target_type: { type: string, enum: [POST, COMMENT, USER] }
+                target_id: { type: integer, minimum: 1, example: 42 }
+                reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+                detail: { type: string, maxLength: 500, description: '`reason`이 ETC면 필수' }
+      responses:
+        '201':
+          description: 접수 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          report_id: { type: integer, example: 17 }
+                          target_type: { type: string, enum: [POST, COMMENT, USER] }
+                          target_id: { type: integer, example: 42 }
+                          status: { type: string, enum: [RECEIVED] }
+        '400': { description: 입력값 오류 또는 자기 자신 신고 (`CANNOT_REPORT_SELF`) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 신고 대상 없음 (`REPORT_TARGET_NOT_FOUND`) }
+        '409': { description: 이미 신고한 대상 (`ALREADY_REPORTED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/blocks:
+    get:
+      tags: [community]
+      summary: 차단 사용자 목록
+      description: |
+        관리 화면용이라 커뮤니티 피드(cursor)와 달리 `page`/`limit` 페이지네이션을 쓴다.
+        `keyword`로 닉네임 검색이 된다.
+      parameters:
+        - { name: keyword, in: query, schema: { type: string, maxLength: 50 }, description: 닉네임 검색 }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          blocks:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                user_id: { type: integer, example: 12 }
+                                nickname: { type: string, example: 인천인 }
+                                blocked_at: { type: string, format: date-time }
+                          pagination:
+                            type: object
+                            properties:
+                              page: { type: integer, example: 1 }
+                              limit: { type: integer, example: 20 }
+                              total: { type: integer, example: 3 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [community]
+      summary: 사용자 차단
+      description: |
+        선언은 단방향이지만 **효과는 양방향**이다 — 차단 이후 서로의 게시글·댓글·팔로우 목록과
+        알림에서 상대가 보이지 않는다. 한쪽만 가리면 차단당한 쪽이 상대를 계속 볼 수 있어
+        회피 수단이 되지 않는다.
+
+        차단하면 **서로의 팔로우 관계가 끊긴다.** 팔로우가 남으면 활동 알림이 계속 오고
+        팔로워 수에도 잡혀 "차단했는데 이어져 있다"는 상태가 된다.
+
+        이미 차단한 상대를 다시 차단해도 성공으로 응답한다(멱등).
+
+        비로그인 조회에는 차단이 적용되지 않는다 — 보는 사람이 정해지지 않기 때문이다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: integer, minimum: 1, example: 12 }
+      responses:
+        '201':
+          description: 차단 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user_id: { type: integer, example: 12 }
+                          nickname: { type: string, example: 인천인 }
+                          is_blocked: { type: boolean, example: true }
+        '400': { description: 자기 자신 차단 시도 (`CANNOT_BLOCK_SELF`) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 존재하지 않는 사용자 (`USER_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/blocks/{userId}:
+    delete:
+      tags: [community]
+      summary: 차단 해제
+      description: |
+        해제해도 차단 전 팔로우 관계는 되살아나지 않는다. 복원하려면 무엇을 끊었는지 따로
+        기록해야 하는데, 다시 팔로우하는 건 한 번의 동작이라 그만한 가치가 없다.
+
+        응답에 실제로 해제된 사용자 ID를 담아 프론트가 목록을 안전하게 갱신할 수 있게 한다.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 해제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user_id: { type: integer, example: 12 }
+                          is_blocked: { type: boolean, example: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 차단 목록에 없는 사용자 (`BLOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/restrictions/me:
+    get:
+      tags: [community]
+      summary: 내 이용 제한 상태
+      description: |
+        **제한이 없는 경우도 정상 응답이다** — `is_restricted: false`, `current: null`.
+        404를 내면 프론트가 오류 처리로 분기하게 된다.
+
+        `current.ends_at`이 `null`이면 무기한 제한이다. `can_appeal`은 이의신청을 아직 하지
+        않은 유효한 제한에서만 `true`다 (제한 건당 한 번만 신청할 수 있다).
+
+        `history`는 지난 제한까지 포함한다. `status`만 보면 만료된 건도 `ACTIVE`로 보이므로
+        지금 효력이 있는지는 `is_effective`로 판단한다 — 만료를 배치로 처리하지 않고 조회
+        시점에 시각을 비교하기 때문이다.
+
+        제한 중에도 이 조회와 이의신청은 할 수 있다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MyRestriction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/restriction/appeals:
+    get:
+      tags: [community]
+      summary: 내 이의신청 목록
+      description: |
+        제출한 이의신청과 처리 상태를 최신순으로 준다.
+        `status`는 `RECEIVED`(접수) · `REVIEWING`(검토 중) · `APPROVED`(승인) · `REJECTED`(반려).
+
+        `admin_comment`는 관리자가 남긴 답변이며 처리 전에는 `null`이다.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeals:
+                            type: array
+                            items: { $ref: '#/components/schemas/RestrictionAppeal' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [community]
+      summary: 이의신청 제출
+      description: |
+        **자기 제한, 유효한 제한, 한 번만** 신청할 수 있다.
+
+        남의 제한이나 이미 풀린 제한에 신청하면 `404 RESTRICTION_NOT_APPEALABLE`이다 —
+        "그 제한이 존재한다"는 사실 자체를 노출하지 않기 위해 한 메시지로 묶었다.
+
+        승인되면 **제한이 함께 해제된다** — 받아들였는데 제한이 남으면 결정이 무의미하다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restriction_id, content]
+              properties:
+                restriction_id: { type: integer, example: 7 }
+                content: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '201':
+          description: 접수 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeal_id: { type: integer, example: 3 }
+                          restriction_id: { type: integer, example: 7 }
+                          status: { type: string, enum: [RECEIVED] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 이의신청할 수 있는 제한이 아님 (`RESTRICTION_NOT_APPEALABLE`) }
+        '409': { description: 이미 이의신청한 제한 (`ALREADY_APPEALED`) }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/community/notifications:
@@ -1642,6 +2666,141 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
         '200': { $ref: '#/components/responses/StockListOk' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/signals:
+    get:
+      tags: [stock]
+      summary: 투자 신호
+      description: |
+        투자 홈에 띄울 신호 목록. 세 종류를 낸다 —
+        `POPULAR`(인기 종목) · `RSI_OVERSOLD`(과매도) · `MACD_GOLDEN_CROSS`(골든크로스).
+
+        **기준 시각이 두 층이다.** `as_of`는 계산을 돌린 시각이고, 신호별 `based_on`은 지표가
+        반영한 마지막 봉의 날짜다. 계산 시각만 보면 오래된 봉으로 만든 값을 방금 만든 것처럼
+        보여주게 되므로, 화면에는 `based_on`을 쓰는 게 맞다.
+
+        `source`는 신호의 출처다 — `daily_candles`(일봉에서 계산한 기술적 지표) ·
+        `community`(이 서비스 사용자의 관심목록·글 태그).
+
+        **인기 종목은 시장 지표가 아니라 우리 사용자 기준이다.** 관심목록에 담은 수와 글에
+        태그된 수를 합산하며, 글 태그에 가중치를 더 준다(글을 쓰는 게 더 큰 행동이라서).
+
+        `RSI_OVERSOLD`는 14일 RSI가 30 이하일 때, `MACD_GOLDEN_CROSS`는 MACD선이 신호선을
+        **막 상향 돌파한 봉**에서만 뜬다. 단순히 MACD > 신호선으로 잡으면 상승 추세 내내 매일
+        신호가 떠서 의미가 없다.
+
+        결과는 15분 캐시된다(`cached`로 구분). 지표가 일봉 기준이라 분 단위로 바뀌지 않고,
+        외부 시세 크레딧도 아낀다. 조회가 실패한 종목은 건너뛰므로 `analyzed_count`가 전체
+        종목 수보다 작을 수 있다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          as_of:
+                            type: string
+                            format: date-time
+                            description: 계산을 돌린 시각
+                          cached: { type: boolean, description: 캐시된 결과인지 }
+                          analyzed_count:
+                            type: integer
+                            description: 지표 계산에 성공한 종목 수
+                            example: 10
+                          signals:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                  enum: [POPULAR, RSI_OVERSOLD, MACD_GOLDEN_CROSS]
+                                stock_code: { type: string, example: AAPL }
+                                name: { type: string, example: Apple Inc }
+                                value:
+                                  type: number
+                                  description: 신호별 대표값 — 인기도 / RSI / MACD 히스토그램
+                                  example: 27.3
+                                threshold:
+                                  type: number
+                                  nullable: true
+                                  description: RSI_OVERSOLD의 판정 경계(30)
+                                based_on:
+                                  type: string
+                                  description: 지표가 반영한 마지막 봉의 시각
+                                source:
+                                  type: string
+                                  enum: [daily_candles, community]
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stocks/related-terms:
+    get:
+      tags: [stock]
+      summary: 연관 검색어
+      description: |
+        검색어와 함께 볼 만한 종목을 짧게 추천한다. 검색창 아래 붙는 목록이라 기본 8개다.
+
+        **연관 신호는 동시 출현 두 가지다** — 같은 글에 함께 태그된 종목(`PostStockTags`)과
+        같은 사람이 함께 담은 종목(`Watchlist`). 글 태그에 가중치를 더 준다: 관심종목은
+        담아두고 잊는 경우가 많지만, 한 글에 두 종목을 함께 적었다면 글쓴이가 둘을 실제로
+        엮어 생각한 것이다.
+
+        검색 로그 테이블이 없어 "이 검색어를 쓴 사람이 다음에 본 것" 방식은 쓸 수 없고,
+        종목에 업종 정보가 없어 "같은 업종"도 쓸 수 없다.
+
+        `matched_by`로 후보의 출처를 구분한다 — `related`(기준 종목과 함께 등장) ·
+        `prefix`(기준 종목을 못 찾아 이름·코드 앞부분으로 제안). 프론트가 "연관 종목"과
+        "검색어 보정"을 다르게 보여줄 수 있다.
+
+        동시 출현 데이터가 아직 없으면 `terms`가 빈 배열이다 — 서비스 초기에는 정상이다.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 50 }
+          description: 검색어. 종목 코드 또는 이름 일부.
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 8 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          q: { type: string, example: AAPL }
+                          seed:
+                            type: object
+                            nullable: true
+                            description: 검색어로 찾은 기준 종목. 못 찾으면 `null`이고 `matched_by`는 prefix가 된다.
+                            properties:
+                              stock_code: { type: string, example: AAPL }
+                              name: { type: string, example: Apple Inc }
+                          terms:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                term: { type: string, description: 화면에 그대로 띄울 문자열(종목명), example: Microsoft }
+                                stock_code: { type: string, example: MSFT }
+                                score: { type: integer, example: 12 }
+                                matched_by: { type: string, enum: [related, prefix] }
         '400': { $ref: '#/components/responses/BadRequest' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -1835,6 +2994,165 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  /api/stocks/{symbol}/company-info:
+    get:
+      tags: [stock]
+      summary: 기업 정보
+      description: |
+        종목 상세의 기업 정보 영역용.
+
+        > ⚠️ **`description`·`region`·`sector`·`industry`·`industry_rank`·`market_cap`은
+        > 현재 항상 `null`이다.** 종목 테이블에 해당 컬럼이 없고 외부 공급사의 프로필 API도
+        > 연동되지 않았다(상위 플랜 필요). 요청서가 지정한 대로 `null`로 내려주므로
+        > 프론트는 해당 영역을 숨기면 된다.
+        >
+        > 빈 문자열이나 "정보 없음" 같은 문자열을 넣지 않는다 — 프론트가 그걸 실제 값으로
+        > 그리게 된다.
+
+        지금 채워지는 건 `stock_code`·`name`·`market`·`currency` 넷이다.
+
+        `as_of`는 외부 데이터의 기준 시각이며 소스 연동 전에는 `null`이다. 미리 둔 이유는
+        나중에 필드를 추가하면 프론트 계약이 또 바뀌기 때문이다 — 값만 주고 시점을 안 주면
+        오래된 정보를 최신처럼 보여주게 된다.
+
+        **소스가 붙어도 응답 구조는 그대로다.** 값만 채워지므로 프론트는 화면을 다시 만들지
+        않아도 된다.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CompanyInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: 존재하지 않는 종목 (`STOCK_NOT_FOUND`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  # ─────────────────────────── stock-alert ────────────────────────
+  /api/stock-alerts/push-token:
+    post:
+      tags: [stock-alert]
+      summary: 기기 푸시 토큰 등록
+      description: |
+        알림을 받을 기기의 푸시 토큰을 계정에 연결한다. 앱은 토큰이 갱신될 때마다 호출하면 되고,
+        같은 토큰을 다시 보내도 소유자·플랫폼만 갱신된다(멱등).
+
+        토큰은 계정이 아니라 **기기**에 딸린 값이라 유일하다. 기기에서 다른 계정으로 로그인해
+        같은 토큰이 올라오면 소유자가 새 계정으로 옮겨간다 — 그대로 두면 이전 계정의 알림이
+        그 기기로 계속 간다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string, maxLength: 255 }
+                platform: { type: string, enum: [IOS, ANDROID, WEB] }
+      responses:
+        '200':
+          description: 등록 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          registered: { type: boolean, example: true }
+                          platform: { type: string, enum: [IOS, ANDROID, WEB] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/stock-alerts/{symbol}:
+    get:
+      tags: [stock-alert]
+      summary: 종목별 알림 조회
+      description: |
+        **설정한 조건만** 배열로 내려간다. 설정하지 않은 종류는 빠진 채로 오므로 프론트에서
+        기본 4개 항목에 합쳐 그리면 된다. 서버가 빈 값으로 채우면 "설정함"과 "값이 0"이
+        구분되지 않는다.
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StockAlerts' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 존재하지 않는 종목 (`STOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    put:
+      tags: [stock-alert]
+      summary: 종목별 알림 저장
+      description: |
+        보낸 `alerts`가 **그 종목의 전체 설정**이다. 요청에 없는 종류는 해제된 것으로 본다.
+        같은 body를 다시 보내면 결과가 같고(멱등), 빈 배열은 그 종목 알림 전체 해제를 뜻한다.
+
+        `threshold`의 단위는 `type`이 정한다 — `TARGET_PRICE`·`STOP_LOSS`는 가격(USD),
+        `DAILY_CHANGE`는 등락률(%, 음수 가능), `VOLUME`은 거래량(주).
+
+        조건 설정까지가 이 API의 범위다. 실제 발송(가격 도달 감지·중복 전송 방지)은 별도 작업이다.
+      parameters:
+        - $ref: '#/components/parameters/Symbol'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [alerts]
+              properties:
+                alerts:
+                  type: array
+                  maxItems: 4
+                  description: 같은 `type`을 두 번 담을 수 없다.
+                  items:
+                    type: object
+                    required: [type, threshold]
+                    properties:
+                      type: { type: string, enum: [TARGET_PRICE, STOP_LOSS, DAILY_CHANGE, VOLUME] }
+                      threshold: { type: number, example: 185.5 }
+                      is_enabled: { type: boolean, default: true }
+      responses:
+        '200':
+          description: 저장된 전체 설정
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/StockAlerts' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 존재하지 않는 종목 (`STOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
 
   # ──────────────────────────── trading ───────────────────────────
   /api/trading/orders:
@@ -2491,6 +3809,264 @@ paths:
                 success: true
                 message: Server is running
 
+  # ───────────────────────────── admin ────────────────────────────
+  # 전 경로 `Users.role = ADMIN` 필요. 아니면 403 `ADMIN_ONLY`.
+  # 관리자 지정은 배포 후 사람이 DB에서 한다 (docs/deployment-guide.md §5-1).
+  # role은 액세스 토큰에 담기므로 승격 후 재로그인이 필요하다.
+  /api/admin/reports:
+    get:
+      tags: [admin]
+      summary: 신고 목록 (관리자)
+      description: |
+        제재 판단의 근거다. **미처리(`RECEIVED`) 건이 먼저, 그다음 오래된 순** — 밀린 것부터
+        처리하도록 정렬했다.
+
+        `target_report_count`는 그 대상이 지금까지 받은 **총 신고 수**다. 제재 판단의 핵심
+        근거인데 목록마다 세어보게 하면 안 되므로 함께 준다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [RECEIVED, REVIEWING, RESOLVED, REJECTED] }
+        - name: target_type
+          in: query
+          schema: { type: string, enum: [POST, COMMENT, USER] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reports:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminReport' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/restrictions:
+    get:
+      tags: [admin]
+      summary: 이용 제한 목록 (관리자)
+      description: |
+        **지금 효력이 있는 제한이 먼저**, 그다음 최근 순.
+
+        `status` 필터의 `EXPIRED`는 저장된 상태가 아니라 **계산된 것**이다 — 만료를 배치로
+        바꾸지 않으므로 `status`는 여전히 `ACTIVE`이고 `ends_at`이 지난 건을 가리킨다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, EXPIRED, LIFTED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restrictions:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminRestriction' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [admin]
+      summary: 이용 제한 부과 (관리자)
+      description: |
+        커뮤니티 활동을 막는다 — 글·댓글 작성과 수정, 좋아요, 팔로우.
+        조회·삭제·북마크·신고·차단은 **막지 않는다** (제한된 사용자도 자기 보호는 해야 한다).
+
+        **기간은 `days`로 받는다.** 서버가 종료 시각을 계산하며, 생략하면 무기한이다.
+        클라이언트가 보낸 시각을 그대로 쓰면 시간대 해석이 갈려 의도한 기간과 어긋난다.
+
+        같은 사용자에게 유효한 제한이 이미 있으면 409 `ALREADY_RESTRICTED`.
+        관리자는 제한할 수 없다 (409 `CANNOT_RESTRICT_ADMIN`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, reason]
+              properties:
+                user_id: { type: integer, example: 12 }
+                reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+                detail: { type: string, maxLength: 500, description: '`reason`이 ETC면 필수' }
+                days:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+                  description: 생략하면 무기한
+                  example: 7
+      responses:
+        '201':
+          description: 부과 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restriction_id: { type: integer, example: 7 }
+                          user_id: { type: integer, example: 12 }
+                          reason: { type: string, example: ABUSE }
+                          ends_at: { type: string, format: date-time, nullable: true }
+                          status: { type: string, enum: [ACTIVE] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 존재하지 않는 사용자 (`USER_NOT_FOUND`) }
+        '409': { description: 이미 제한 중(`ALREADY_RESTRICTED`) 또는 관리자 대상(`CANNOT_RESTRICT_ADMIN`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/restrictions/{restrictionId}:
+    delete:
+      tags: [admin]
+      summary: 이용 제한 해제 (관리자)
+      description: 이미 해제된 제한을 다시 해제하면 409 `ALREADY_LIFTED` — 해제 시각이 뒤바뀌지 않는다.
+      parameters:
+        - name: restrictionId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 해제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restriction_id: { type: integer, example: 7 }
+                          status: { type: string, enum: [LIFTED] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 제한 없음 (`RESTRICTION_NOT_FOUND`) }
+        '409': { description: 이미 해제됨 (`ALREADY_LIFTED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/appeals:
+    get:
+      tags: [admin]
+      summary: 이의신청 목록 (관리자)
+      description: '**미처리(`RECEIVED`·`REVIEWING`) 건이 먼저**, 그다음 오래된 순 — 밀린 것부터 처리하도록.'
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeals:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminAppeal' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/appeals/{appealId}/decision:
+    post:
+      tags: [admin]
+      summary: 이의신청 승인·거절 (관리자)
+      description: |
+        **승인하면 제한이 함께 해제된다** — 받아들였는데 제한이 남으면 결정이 무의미하다.
+        한 트랜잭션이라 "승인은 됐는데 여전히 제한 중"이 생기지 않는다.
+
+        이미 처리된 신청은 409 `APPEAL_ALREADY_PROCESSED` — 두 관리자가 동시에 눌러도
+        첫 판정만 남는다.
+
+        `admin_comment`는 사용자에게 그대로 보인다.
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                admin_comment: { type: string, maxLength: 500, description: 사용자에게 보이는 답변 }
+      responses:
+        '200':
+          description: 처리 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeal_id: { type: integer, example: 3 }
+                          status: { type: string, enum: [APPROVED, REJECTED] }
+                          restriction_id: { type: integer, example: 7 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 이의신청 없음 (`APPEAL_NOT_FOUND`) }
+        '409': { description: 이미 처리됨 (`APPEAL_ALREADY_PROCESSED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2856,6 +4432,48 @@ components:
             position:
               allOf: [{ $ref: '#/components/schemas/Position' }]
               nullable: true
+    NotificationPrefs:
+      type: object
+      description: |
+        전 항목이 항상 채워져 내려간다. 저장된 적 없는 항목은 서버 기본값(현재 전부 true)이다.
+      properties:
+        service:
+          type: object
+          properties:
+            push: { type: boolean, example: true, description: 마스터 스위치. 꺼지면 전부 발송하지 않는다. }
+            notice: { type: boolean, example: true, description: 서비스 공지. 발송 주체 미구현. }
+        learning:
+          type: object
+          properties:
+            reminder: { type: boolean, example: true, description: 학습 리마인더. 발송 주체 미구현. }
+        invest:
+          type: object
+          properties:
+            stock_alert: { type: boolean, example: true }
+            vote_start: { type: boolean, example: true }
+            portfolio_changed: { type: boolean, example: true }
+        team:
+          type: object
+          properties:
+            join_request: { type: boolean, example: true, description: 팀장에게 가는 가입 신청 알림 }
+        community:
+          type: object
+          properties:
+            followee_post: { type: boolean, example: true }
+            post_like: { type: boolean, example: true }
+            post_comment: { type: boolean, example: true }
+            comment_reply: { type: boolean, example: true }
+
+    Agreements:
+      type: object
+      description: |
+        약관 동의 상태. 저장된 적 없는 항목은 `false`로 채워져 항상 세 키가 모두 내려온다 —
+        `undefined`가 섞이면 온보딩 분기가 갈린다.
+      properties:
+        terms: { type: boolean, example: true }
+        privacy: { type: boolean, example: true }
+        marketing: { type: boolean, example: false }
+
     MyProfile:
       type: object
       properties:
@@ -2874,6 +4492,16 @@ components:
           properties:
             id: { type: integer, example: 42 }
             name: { type: string, example: 연세대학교 }
+            is_verified: { type: boolean, example: true }
+        agreements:
+          allOf: [{ $ref: '#/components/schemas/Agreements' }]
+          description: 동의한 적 없는 항목도 `false`로 항상 세 키가 모두 내려온다.
+        phone:
+          type: object
+          nullable: true
+          description: 번호 미등록 시 `null`
+          properties:
+            number: { type: string, example: '01012345678' }
             is_verified: { type: boolean, example: true }
         team:
           type: object
@@ -2961,6 +4589,212 @@ components:
               inserted: { type: integer, example: 2372 }
 
     # ── team ──
+    PageInfo:
+      type: object
+      description: 페이지 번호 방식 목록의 공통 메타. (커뮤니티 피드는 cursor 방식이라 이걸 쓰지 않는다)
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 42 }
+
+    # ── 이용 제한 ──
+    MyRestriction:
+      type: object
+      properties:
+        is_restricted: { type: boolean, description: 지금 효력이 있는 제한이 있는가, example: false }
+        current:
+          type: object
+          nullable: true
+          description: 제한이 없으면 `null`. 오류가 아니다.
+          properties:
+            restriction_id: { type: integer, example: 7 }
+            type: { type: string, enum: [COMMUNITY_BLOCK] }
+            reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+            detail: { type: string, nullable: true }
+            starts_at: { type: string, format: date-time }
+            ends_at: { type: string, format: date-time, nullable: true, description: 'null이면 무기한' }
+            can_appeal:
+              type: boolean
+              description: 아직 이의신청하지 않았을 때만 true (제한 건당 한 번)
+              example: true
+        history:
+          type: array
+          description: 지난 제한까지 포함. 지금 효력 여부는 `is_effective`로 판단한다.
+          items: { $ref: '#/components/schemas/RestrictionItem' }
+
+    RestrictionItem:
+      type: object
+      properties:
+        restriction_id: { type: integer, example: 7 }
+        type: { type: string, enum: [COMMUNITY_BLOCK] }
+        reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+        detail: { type: string, nullable: true }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [ACTIVE, LIFTED, EXPIRED] }
+        is_effective:
+          type: boolean
+          description: |
+            지금 효력이 있는지. `status`만 보면 만료된 건도 `ACTIVE`로 보인다 —
+            만료를 배치로 바꾸지 않고 조회 시점에 시각을 비교하기 때문이다.
+          example: false
+        created_at: { type: string, format: date-time }
+        lifted_at: { type: string, format: date-time, nullable: true }
+
+    RestrictionAppeal:
+      type: object
+      properties:
+        appeal_id: { type: integer, example: 3 }
+        restriction_id: { type: integer, example: 7 }
+        restriction_reason: { type: string, example: ABUSE }
+        content: { type: string }
+        status: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        admin_comment: { type: string, nullable: true, description: 처리 전에는 null }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    # ── 관리자 ──
+    AdminReport:
+      type: object
+      properties:
+        report_id: { type: integer, example: 17 }
+        reporter:
+          type: object
+          properties:
+            user_id: { type: integer, example: 9 }
+            nickname: { type: string, example: 신고자 }
+        target_type: { type: string, enum: [POST, COMMENT, USER] }
+        target_id: { type: integer, example: 42 }
+        reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+        detail: { type: string, nullable: true }
+        status: { type: string, enum: [RECEIVED, REVIEWING, RESOLVED, REJECTED] }
+        target_report_count:
+          type: integer
+          description: 이 대상이 지금까지 받은 총 신고 수 — 제재 판단의 핵심 근거
+          example: 4
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    AdminRestriction:
+      allOf:
+        - $ref: '#/components/schemas/RestrictionItem'
+        - type: object
+          properties:
+            user_id: { type: integer, example: 12 }
+            nickname: { type: string, example: 인천인 }
+
+    AdminAppeal:
+      type: object
+      properties:
+        appeal_id: { type: integer, example: 3 }
+        restriction_id: { type: integer, example: 7 }
+        user_id: { type: integer, example: 12 }
+        nickname: { type: string, example: 인천인 }
+        content: { type: string }
+        status: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        admin_comment: { type: string, nullable: true }
+        restriction_reason: { type: string, example: ABUSE }
+        restriction_status: { type: string, enum: [ACTIVE, LIFTED, EXPIRED] }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    TeamInvitation:
+      type: object
+      properties:
+        team_id: { type: integer, example: 5 }
+        join_code: { type: string, minLength: 8, maxLength: 8, example: A1B2C3D4 }
+        remaining_slots:
+          type: integer
+          description: 남은 자리. 0이면 신청 자체가 막힌다.
+          example: 2
+        max_member_count: { type: integer, example: 4 }
+        current_member_count: { type: integer, example: 2 }
+        is_expired:
+          type: boolean
+          description: 항상 false — 시간 만료는 두지 않고 재발급으로 이전 코드를 무효화한다.
+          example: false
+
+    TeamJoinRequest:
+      type: object
+      properties:
+        request_id: { type: integer, example: 31 }
+        user_id: { type: integer, example: 12 }
+        nickname: { type: string, example: 인천인 }
+        position:
+          allOf: [{ $ref: '#/components/schemas/Position' }]
+          description: 신청 시 고른 값. 승인 시점에 적용된다.
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED] }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    TeamExitOptions:
+      type: object
+      description: |
+        탈퇴 화면이 쓸 판정 결과. `leave_effect`가 `POST /leave`의 실제 결과이고,
+        `reasons`는 불가능한 항목의 사유 문장(가능하면 `null`)이다.
+      properties:
+        team_id: { type: integer, example: 5 }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        member_count: { type: integer, example: 3 }
+        can_leave: { type: boolean, example: true, description: 항상 true. 팀장도 탈퇴할 수 있다. }
+        leave_effect:
+          type: string
+          enum: [LEAVE, AUTO_DELEGATE, DISBAND]
+          description: 탈퇴를 눌렀을 때 실제로 일어날 일
+          example: AUTO_DELEGATE
+        can_delegate: { type: boolean, description: 넘길 사람을 직접 고를 수 있는가 (팀장이고 다른 팀원이 있을 때) }
+        can_disband: { type: boolean, description: 해체할 수 있는가 (팀장일 때) }
+        delegatable_members:
+          type: array
+          description: 위임 대상 후보. 팀장이 아니면 빈 배열.
+          items:
+            type: object
+            properties:
+              user_id: { type: integer, example: 12 }
+              nickname: { type: string, example: 인천인 }
+              joined_at: { type: string, format: date-time }
+        reasons:
+          type: object
+          description: 불가능한 이유. 가능한 항목은 `null`.
+          properties:
+            delegate: { type: string, nullable: true, example: 팀에 다른 팀원이 없습니다. }
+            disband: { type: string, nullable: true, example: 팀장만 팀을 해체할 수 있습니다. }
+
+    TeamLeaveResult:
+      type: object
+      properties:
+        result:
+          type: string
+          enum: [LEFT, DELEGATED_AND_LEFT, DISBANDED]
+          example: DELEGATED_AND_LEFT
+        team_id: { type: integer, example: 5 }
+        new_leader:
+          type: object
+          nullable: true
+          description: 위임이 일어났을 때만 채워진다.
+          properties:
+            user_id: { type: integer, example: 12 }
+
+    TeamRules:
+      type: object
+      description: '규칙을 아직 쓰지 않은 팀은 content가 null이고 version이 0이다.'
+      properties:
+        team_id: { type: integer, example: 5 }
+        content: { type: string, nullable: true, example: '매주 월요일 21시 정기 회의' }
+        version:
+          type: integer
+          example: 3
+          description: 저장 시 그대로 돌려보낼 값. 규칙이 없으면 0.
+        updated_at: { type: string, format: date-time, nullable: true }
+        updated_by:
+          type: object
+          nullable: true
+          description: 작성자가 팀을 떠났으면 `null`. 내용은 팀에 남는다.
+          properties:
+            id: { type: integer, example: 7 }
+            nickname: { type: string, example: 인천인 }
+        can_edit: { type: boolean, description: 팀장이면 true }
+
     Team:
       type: object
       description: 팀 상세 (Teams 행 + 멤버 목록)
@@ -3081,9 +4915,32 @@ components:
         topicId: { type: integer, example: 3 }
         topicTitle: { type: string, example: 주식 기본 개념 }
         totalQuestions: { type: integer, example: 4 }
-        correctCount: { type: integer, example: 3 }
-        score: { type: integer, description: '0~100 정수', example: 75 }
+        correctCount: { type: integer, description: '**누적** — 한 번이라도 정답이면 정답', example: 3 }
+        score: { type: integer, description: '0~100 정수. 누적 기준', example: 75 }
         message: { type: string, example: '좋아요! 조금만 더! 💪' }
+        attempt:
+          type: object
+          nullable: true
+          description: |
+            **이번 회차** 기준 결과. `GET /api/learning/quiz-results`의 이력과 같은 값이다.
+            답안 없이 완료를 부르거나 이미 닫힌 회차면 `null`.
+          properties:
+            attemptId: { type: integer, example: 12 }
+            correctCount: { type: integer, description: 이 회차에서 맞은 문제 수, example: 2 }
+            totalQuestions: { type: integer, description: 주제의 전체 문제 수, example: 3 }
+            score: { type: integer, example: 67 }
+
+    QuizResult:
+      type: object
+      description: 완료된 응시 회차 한 건. 값은 확정 시점 스냅샷이다.
+      properties:
+        attempt_id: { type: integer, example: 12 }
+        topic_id: { type: integer, example: 3 }
+        topic_title: { type: string, example: 캔들차트 읽는 법 }
+        correct_count: { type: integer, description: 이 회차에서 맞은 문제 수, example: 2 }
+        total_quiz_count: { type: integer, description: 주제의 전체 문제 수, example: 3 }
+        score: { type: integer, description: '0~100 정수', example: 67 }
+        completed_at: { type: string, format: date-time }
 
     # ── community ──
     CreatePostRequest:
@@ -3225,6 +5082,65 @@ components:
         sender_nickname: { type: string, example: 투자왕 }
 
     # ── stock ──
+    CompanyInfo:
+      type: object
+      description: |
+        아래 `null` 표시된 필드는 데이터 소스가 연동되지 않아 **현재 항상 null**이다.
+        소스가 붙으면 값만 채워지고 구조는 바뀌지 않는다.
+      properties:
+        stock_code: { type: string, example: AAPL }
+        name: { type: string, example: Apple Inc }
+        market: { type: string, enum: [NASDAQ, NYSE] }
+        currency: { type: string, example: USD }
+        description:
+          type: string
+          nullable: true
+          description: 기업 개요. **소스 미연동 — 항상 null**
+        region:
+          type: string
+          nullable: true
+          description: 본사 소재 지역. **소스 미연동 — 항상 null**
+        sector:
+          type: string
+          nullable: true
+          description: '산업 대분류 (예: Technology). **소스 미연동 — 항상 null**'
+        industry:
+          type: string
+          nullable: true
+          description: '산업 세분류 (예: Consumer Electronics). **소스 미연동 — 항상 null**'
+        industry_rank:
+          type: integer
+          nullable: true
+          description: 산업 내 순위. **소스 미연동 — 항상 null**
+        market_cap:
+          type: number
+          nullable: true
+          description: 시가총액. **소스 미연동 — 항상 null**
+        as_of:
+          type: string
+          format: date-time
+          nullable: true
+          description: 외부 데이터 기준 시각. 소스 연동 전에는 null.
+
+    StockAlerts:
+      type: object
+      description: |
+        설정한 조건만 담긴다. 미설정 종류는 배열에 없으므로 프론트에서 기본 4개 항목에 합친다.
+      properties:
+        stock_code: { type: string, example: AAPL }
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [TARGET_PRICE, STOP_LOSS, DAILY_CHANGE, VOLUME] }
+              threshold:
+                type: number
+                description: '단위는 type이 정한다 — 가격(USD) / 등락률(%) / 거래량(주)'
+                example: 185.5
+              is_enabled: { type: boolean, example: true }
+              updated_at: { type: string, format: date-time }
+
     Stock:
       type: object
       properties:

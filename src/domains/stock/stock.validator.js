@@ -18,4 +18,12 @@ const watchlistParamsSchema = Joi.object({
   stock_code: Joi.string().trim().uppercase().max(20).required(),
 });
 
-module.exports = { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema };
+// GET /api/stocks/related-terms?q=&limit=
+// limit이 작은 이유: 검색창 아래 붙는 짧은 추천 목록이다(요청 19). 길면 화면을 덮는다.
+const relatedTermsSchema = Joi.object({
+  q: Joi.string().trim().min(1).max(50).required()
+    .messages({ 'any.required': '검색어(q)를 입력해주세요.' }),
+  limit: Joi.number().integer().min(1).max(20).default(8),
+});
+
+module.exports = { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema, relatedTermsSchema };

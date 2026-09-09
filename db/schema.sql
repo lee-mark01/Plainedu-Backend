@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS Users (
   email               VARCHAR(255) NOT NULL,
   password            VARCHAR(255) NULL,                                  -- 소셜 로그인 시 NULL
   nickname            VARCHAR(50)  NOT NULL,
+  phone               VARCHAR(20)  NULL,                                  -- 하이픈 없는 숫자만
+  phone_verified_at   TIMESTAMP    NULL,                                  -- 미인증이면 NULL
   role                ENUM('USER','ADMIN') NOT NULL DEFAULT 'USER',
   position            ENUM('TRADER','ANALYST','NONE') NOT NULL DEFAULT 'NONE',
   provider            VARCHAR(20)  NOT NULL DEFAULT 'local',              -- local, kakao, naver, google
@@ -53,6 +55,7 @@ CREATE TABLE IF NOT EXISTS Users (
   UNIQUE KEY uq_users_email (email),
   INDEX idx_users_school_id (school_id),
   INDEX idx_users_provider_sns (provider, sns_id),
+  INDEX idx_users_phone (phone),                                          -- 번호 중복 인증 검사용
   CONSTRAINT fk_users_school
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -96,6 +99,42 @@ CREATE TABLE IF NOT EXISTS school_VerificationLogs (
     FOREIGN KEY (admin_id) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 1-6. UserAgreements (약관/개인정보/마케팅 동의)
+-- 현재 상태만 보관한다(user_id+type UNIQUE). agreed_at은 철회해도 지우지 않는다 —
+-- "언제 동의했었는지"가 증빙의 핵심이고 철회 시각은 updated_at이 갖는다.
+-- version은 동의 당시의 약관 버전(src/config/agreements.js). 개정 후 재동의 대상을 가리는 근거다.
+CREATE TABLE IF NOT EXISTS UserAgreements (
+  id          INT         NOT NULL AUTO_INCREMENT,
+  user_id     INT         NOT NULL,
+  type        ENUM('TERMS','PRIVACY','MARKETING') NOT NULL,
+  is_agreed   BOOLEAN     NOT NULL DEFAULT FALSE,
+  version     VARCHAR(20) NOT NULL DEFAULT '1.0',
+  agreed_at   TIMESTAMP   NULL,                                     -- 마지막으로 동의한 시각
+  updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ua_user_type (user_id, type),
+  CONSTRAINT fk_ua_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 1-7. NotificationPrefs (알림 수신 설정)
+-- 항목마다 컬럼을 만들지 않고 (user_id, pref_key) 한 행씩 쌓는다 — 알림 종류는 기능이 늘 때마다
+-- 함께 늘고, 부분 수정도 행 단위가 자연스럽다.
+-- 행이 없으면 서버 기본값(src/domains/user/notificationPref.defaults.js). 가입 시 미리 넣지
+-- 않는 이유는 기본값이 바뀌었을 때 기존 유저가 옛 값에 묶이지 않게 하기 위해서다.
+-- 마케팅 수신 동의는 여기 없다 — UserAgreements.MARKETING 소관이다(법적 증빙 필요).
+CREATE TABLE IF NOT EXISTS NotificationPrefs (
+  id          BIGINT      NOT NULL AUTO_INCREMENT,
+  user_id     INT         NOT NULL,
+  pref_key    VARCHAR(64) NOT NULL,                   -- 'community.post_like' 형식
+  is_enabled  BOOLEAN     NOT NULL,
+  updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_np_user_key (user_id, pref_key),
+  CONSTRAINT fk_np_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 2. 활동 및 퀴즈 (출석/포인트/학습)
 -- =============================================================================
@@ -117,11 +156,13 @@ CREATE TABLE IF NOT EXISTS Attendances (
 
 -- 2-2. Topics
 CREATE TABLE IF NOT EXISTS Topics (
-  id          INT          NOT NULL AUTO_INCREMENT,
-  title       VARCHAR(100) NOT NULL,
-  sort_order  INT          NOT NULL DEFAULT 0,
+  id            INT          NOT NULL AUTO_INCREMENT,
+  title         VARCHAR(100) NOT NULL,
+  level_number  INT          NOT NULL DEFAULT 1,
+  sort_order    INT          NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  INDEX idx_topics_sort (sort_order)
+  INDEX idx_topics_sort (sort_order),
+  INDEX idx_topics_level_sort (level_number, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2-3. ShortForms
@@ -176,15 +217,45 @@ CREATE TABLE IF NOT EXISTS UserQuizLog (
   id          INT       NOT NULL AUTO_INCREMENT,
   user_id     INT       NOT NULL,
   quiz_id     INT       NOT NULL,
+  attempt_id  INT       NULL,                          -- 어느 응시 회차에 속하는지 (QuizAttempts)
   is_correct  BOOLEAN   NOT NULL,
   created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   INDEX idx_uql_user_quiz (user_id, quiz_id),
   INDEX idx_uql_quiz (quiz_id),
+  INDEX idx_uql_attempt (attempt_id),
   CONSTRAINT fk_uql_user
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_uql_quiz
-    FOREIGN KEY (quiz_id) REFERENCES Quizzes(id) ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (quiz_id) REFERENCES Quizzes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  -- SET NULL: 로그는 원본 기록이라 회차가 지워져도 남아야 한다
+  CONSTRAINT fk_uql_attempt
+    FOREIGN KEY (attempt_id) REFERENCES QuizAttempts(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 2-6b. QuizAttempts (퀴즈 응시 회차)
+-- UserQuizLog는 문제 하나에 한 행이라 "어디까지가 1회차인가"를 알 수 없다.
+-- 점수를 확정 시점 스냅샷으로 남기는 이유: 로그에서 재계산하면 나중에 그 주제에 퀴즈가
+-- 추가·삭제됐을 때 분모가 달라져 사용자가 그때 본 점수가 바뀐다.
+-- UserProgress와 역할이 다르다 — UserProgress는 덮어쓰기라 "현재 상태"만 갖고, 이력은 여기가 맡는다.
+-- 완료를 안 누른 채 이탈하면 IN_PROGRESS로 남는다. 다음 응시가 이어 붙고 목록에는 COMPLETED만 나간다.
+CREATE TABLE IF NOT EXISTS QuizAttempts (
+  id                INT       NOT NULL AUTO_INCREMENT,
+  user_id           INT       NOT NULL,
+  topic_id          INT       NOT NULL,
+  status            ENUM('IN_PROGRESS','COMPLETED') NOT NULL DEFAULT 'IN_PROGRESS',
+  correct_count     INT       NOT NULL DEFAULT 0,      -- 이 회차에서 맞은 문제 수
+  total_quiz_count  INT       NOT NULL DEFAULT 0,      -- 주제의 전체 문제 수 (회차 간 비교 가능하도록)
+  score             INT       NULL,                    -- 완료 시 확정
+  started_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at      TIMESTAMP NULL,
+  PRIMARY KEY (id),
+  INDEX idx_qa_user_completed (user_id, completed_at),        -- 최신순 페이지네이션
+  INDEX idx_qa_user_topic_status (user_id, topic_id, status), -- 진행 중 회차 조회
+  CONSTRAINT fk_qa_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_qa_topic
+    FOREIGN KEY (topic_id) REFERENCES Topics(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2-7. UserProgress
@@ -286,6 +357,49 @@ CREATE TABLE IF NOT EXISTS Portfolios (
     FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_portfolio_proposer
     FOREIGN KEY (proposed_by) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3-3b. TeamRules (팀 운영 규칙)
+-- 팀당 한 벌이라 team_id가 곧 PK. version은 낙관적 잠금용 — 규칙은 자유 텍스트라 병합할 수단이
+-- 없어서 "읽은 버전이 아직 최신인가"를 저장 시점에 확인해 덮어쓰기를 막는다.
+-- 규칙을 쓴 사람이 팀을 떠나도 내용은 팀의 것으로 남는다(updated_by만 NULL).
+CREATE TABLE IF NOT EXISTS TeamRules (
+  team_id     INT       NOT NULL,
+  content     TEXT      NOT NULL,
+  version     INT       NOT NULL DEFAULT 1,
+  updated_by  INT       NULL,
+  updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (team_id),
+  CONSTRAINT fk_tr_team
+    FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tr_updated_by
+    FOREIGN KEY (updated_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3-3c. TeamJoinRequests (팀 가입 신청)
+-- 정책(2026-09-09): 코드를 맞게 입력하면 가입 "신청"이 되고 팀장이 승인해야 들어간다.
+-- 대기 중 신청은 유저당 하나만 — MySQL에 부분 유니크 인덱스가 없어 서비스가 트랜잭션으로
+-- 잠그고 보장한다. 인덱스는 그 조회를 위해 둔다.
+-- CANCELED가 있는 이유: 다른 팀에 새로 신청하면 기존 대기 건을 지우지 않고 취소로 남긴다.
+-- position을 신청 시 받는 이유: 승인은 팀장이 하는데 신청자의 포지션을 대신 고를 수 없다.
+CREATE TABLE IF NOT EXISTS TeamJoinRequests (
+  id            INT       NOT NULL AUTO_INCREMENT,
+  team_id       INT       NOT NULL,
+  user_id       INT       NOT NULL,
+  position      ENUM('TRADER','ANALYST') NOT NULL,
+  status        ENUM('PENDING','APPROVED','REJECTED','CANCELED') NOT NULL DEFAULT 'PENDING',
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at  TIMESTAMP NULL,
+  processed_by  INT       NULL,                          -- 어느 팀장이 처리했나
+  PRIMARY KEY (id),
+  INDEX idx_tjr_team_status (team_id, status, created_at),
+  INDEX idx_tjr_user_status (user_id, status),
+  CONSTRAINT fk_tjr_team
+    FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tjr_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tjr_processed_by
+    FOREIGN KEY (processed_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 3-4. TeamActivePortfolios
@@ -478,6 +592,47 @@ CREATE TABLE IF NOT EXISTS Watchlist (
     FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 4-x. StockAlerts (종목별 알림 조건)
+-- 설정한 조건만 행으로 남는다 — 조회 시 미설정 항목을 빈 값으로 채우지 않고 빼서 내린다.
+-- threshold 한 컬럼에 가격(달러)·등락률(%)·거래량(주)이 함께 들어간다. 단위 해석은 type이 정하고
+-- 서버는 임계값 비교만 한다.
+CREATE TABLE IF NOT EXISTS StockAlerts (
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
+  user_id     INT           NOT NULL,
+  stock_code  VARCHAR(20)   NOT NULL,
+  type        ENUM('TARGET_PRICE','STOP_LOSS','DAILY_CHANGE','VOLUME') NOT NULL,
+  threshold   DECIMAL(18,4) NOT NULL,
+  is_enabled  BOOLEAN       NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_sa_user_stock_type (user_id, stock_code, type),
+  INDEX idx_sa_user (user_id),
+  INDEX idx_sa_stock_enabled (stock_code, is_enabled),   -- 발송 단계에서 종목별 대상 조회용
+  CONSTRAINT fk_sa_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_sa_stock
+    FOREIGN KEY (stock_code) REFERENCES Stocks(stock_code) ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 4-y. PushTokens (기기 푸시 토큰)
+-- 토큰은 계정이 아니라 기기에 딸린 값이라 token이 유일하다. 기기에서 다른 계정으로 로그인하면
+-- 소유자를 옮긴다 — 안 그러면 이전 계정의 알림이 남의 기기로 간다.
+-- 같은 토큰이 여러 행이면 한 번 보낼 때 여러 번 발송되므로 이 제약이 중복 전송도 막는다.
+CREATE TABLE IF NOT EXISTS PushTokens (
+  id          BIGINT       NOT NULL AUTO_INCREMENT,
+  user_id     INT          NOT NULL,
+  token       VARCHAR(255) NOT NULL,
+  platform    ENUM('IOS','ANDROID','WEB') NOT NULL,
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_pt_token (token),
+  INDEX idx_pt_user (user_id),
+  CONSTRAINT fk_pt_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 5. 랭킹
 -- =============================================================================
@@ -486,13 +641,16 @@ CREATE TABLE IF NOT EXISTS Watchlist (
 CREATE TABLE IF NOT EXISTS DailyRankings (
   id                  INT            NOT NULL AUTO_INCREMENT,
   season_id           INT            NOT NULL,
-  target_type         ENUM('USER','TEAM','SCHOOL') NOT NULL,
+  target_type         ENUM('USER','TEAM','SCHOOL_INDIVIDUAL','SCHOOL_TEAM') NOT NULL,
+  school_group        ENUM('HIGH_SCHOOL','UNIVERSITY') NULL,   -- 그룹 리그 내 순위. 통합 시절 행은 NULL
   target_id           INT            NOT NULL,
+  target_name         VARCHAR(100)   NULL,                     -- 확정 시점 이름 스냅샷. 현재 TEAM 행만 채운다
   rank_date           DATE           NOT NULL,
   rank_position       INT            NOT NULL,
   return_rate         DECIMAL(8,4)   NOT NULL,
   final_score         DECIMAL(10,4)  NOT NULL,
-  participation_rate  DECIMAL(5,2)   NOT NULL,
+  participation_rate  DECIMAL(5,2)   NULL,                     -- 소속 보드는 참여율 개념이 없어 NULL
+  alignment_score     DECIMAL(6,2)   NULL,                     -- 팀 보드 주간 확정값. 그 외 NULL
   PRIMARY KEY (id),
   UNIQUE KEY uq_dr_target_date (target_type, target_id, rank_date, season_id),
   INDEX idx_dr_season_date_type (season_id, rank_date, target_type),
@@ -604,7 +762,7 @@ CREATE TABLE IF NOT EXISTS Notifications (
   id            INT          NOT NULL AUTO_INCREMENT,
   user_id       INT          NOT NULL,
   sender_id     INT          NOT NULL,
-  type          ENUM('FOLLOWEE_POST','POST_LIKE','POST_COMMENT','COMMENT_REPLY','VOTE_START','PORTFOLIO_CHANGED') NOT NULL,
+  type          ENUM('FOLLOWEE_POST','POST_LIKE','POST_COMMENT','COMMENT_REPLY','VOTE_START','PORTFOLIO_CHANGED','TEAM_JOIN_REQUEST') NOT NULL,
   reference_id  INT          NULL,
   content       VARCHAR(255) NULL,
   is_read       BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -661,6 +819,105 @@ CREATE TABLE IF NOT EXISTS PostBookmarks (
     FOREIGN KEY (post_id) REFERENCES CommunityPosts(id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_pb_user
     FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-10. CommunityBlocks (차단)
+-- 선언은 단방향, 효과는 양방향 — 서로의 글·댓글·팔로우가 상대에게 보이지 않는다.
+-- 한쪽만 가리면 차단한 사람이 상대에게 계속 노출돼 회피 수단이 되지 않는다.
+-- idx_cb_blocked는 "나를 차단한 사람" 역방향 조회용이다.
+CREATE TABLE IF NOT EXISTS CommunityBlocks (
+  id          INT       NOT NULL AUTO_INCREMENT,
+  blocker_id  INT       NOT NULL,
+  blocked_id  INT       NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_cb_pair (blocker_id, blocked_id),
+  INDEX idx_cb_blocked (blocked_id),
+  CONSTRAINT fk_cb_blocker
+    FOREIGN KEY (blocker_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_cb_blocked
+    FOREIGN KEY (blocked_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-11. CommunityReports (신고)
+-- 접수만 한다. 제재를 부과하는 주체가 아직 없어 status는 RECEIVED에서 시작한다.
+-- 같은 대상을 여러 번 신고해도 한 건으로 본다(uq_cr_reporter_target) — 중복 접수를 허용하면
+-- 신고 수를 제재 근거로 쓸 때 한 사람이 수치를 부풀릴 수 있다.
+-- target_id에 FK가 없는 이유: 대상이 글·댓글·유저로 갈려 한 컬럼으로 참조할 수 없고,
+-- 신고된 글이 삭제돼도 접수 기록은 남아야 한다.
+CREATE TABLE IF NOT EXISTS CommunityReports (
+  id            INT          NOT NULL AUTO_INCREMENT,
+  reporter_id   INT          NOT NULL,
+  target_type   ENUM('POST','COMMENT','USER') NOT NULL,
+  target_id     INT          NOT NULL,
+  reason        ENUM('SPAM','ABUSE','ADULT','FALSE_INFO','ETC') NOT NULL,
+  detail        VARCHAR(500) NULL,
+  status        ENUM('RECEIVED','REVIEWING','RESOLVED','REJECTED') NOT NULL DEFAULT 'RECEIVED',
+  created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at  TIMESTAMP    NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_cr_reporter_target (reporter_id, target_type, target_id),
+  INDEX idx_cr_target (target_type, target_id),
+  INDEX idx_cr_status (status, created_at),
+  CONSTRAINT fk_cr_reporter
+    FOREIGN KEY (reporter_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-12. UserRestrictions (이용 제한)
+-- 부과 주체는 관리자(Users.role = ADMIN)다. 신고 누적 자동 제재는 넣지 않았다 —
+-- 조직적 신고에 악용될 수 있고 사람이 판단하는 편이 오판이 적다.
+-- type이 값 하나뿐인 이유: 지금 필요한 건 커뮤니티 전체 금지뿐이다(2026-09-09 결정).
+-- 컬럼을 빼는 대신 ENUM으로 둬서 종류가 늘 때 기존 행 백필이 필요 없게 했다.
+-- ends_at NULL은 무기한. 만료는 배치가 아니라 조회 시점에 판단한다
+-- (status=ACTIVE AND (ends_at IS NULL OR ends_at > NOW())) — 배치가 늦어도 오판이 없다.
+CREATE TABLE IF NOT EXISTS UserRestrictions (
+  id          INT          NOT NULL AUTO_INCREMENT,
+  user_id     INT          NOT NULL,
+  type        ENUM('COMMUNITY_BLOCK') NOT NULL DEFAULT 'COMMUNITY_BLOCK',
+  reason      ENUM('SPAM','ABUSE','ADULT','FALSE_INFO','ETC') NOT NULL,
+  detail      VARCHAR(500) NULL,
+  starts_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ends_at     TIMESTAMP    NULL,                       -- NULL = 무기한
+  status      ENUM('ACTIVE','LIFTED','EXPIRED') NOT NULL DEFAULT 'ACTIVE',
+  created_by  INT          NULL,                       -- 어느 관리자가 부과했나
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  lifted_by   INT          NULL,
+  lifted_at   TIMESTAMP    NULL,
+  PRIMARY KEY (id),
+  INDEX idx_ur_user_status (user_id, status, ends_at),  -- 쓰기 경로마다 확인하는 조회
+  INDEX idx_ur_status_created (status, created_at),
+  CONSTRAINT fk_ur_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ur_created_by
+    FOREIGN KEY (created_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_ur_lifted_by
+    FOREIGN KEY (lifted_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-13. RestrictionAppeals (이의신청)
+-- status 네 값은 프론트 요청서가 지정한 접수·검토 중·승인·반려에 대응한다.
+-- 제한 건당 하나만 받는다(uq_ra_restriction) — 중복 접수를 허용하면 관리자 목록이
+-- 같은 건으로 채워지고 어느 걸 처리해야 하는지 모호해진다.
+CREATE TABLE IF NOT EXISTS RestrictionAppeals (
+  id              INT           NOT NULL AUTO_INCREMENT,
+  restriction_id  INT           NOT NULL,
+  user_id         INT           NOT NULL,
+  content         VARCHAR(1000) NOT NULL,
+  status          ENUM('RECEIVED','REVIEWING','APPROVED','REJECTED') NOT NULL DEFAULT 'RECEIVED',
+  admin_comment   VARCHAR(500)  NULL,
+  created_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at    TIMESTAMP     NULL,
+  processed_by    INT           NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ra_restriction (restriction_id),
+  INDEX idx_ra_user_created (user_id, created_at),
+  INDEX idx_ra_status_created (status, created_at),
+  CONSTRAINT fk_ra_restriction
+    FOREIGN KEY (restriction_id) REFERENCES UserRestrictions(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ra_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ra_processed_by
+    FOREIGN KEY (processed_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================

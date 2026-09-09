@@ -27,7 +27,7 @@ const getFollowCounts = async (req, res, next) => {
 const getFollowers = async (req, res, next) => {
   try {
     const user_id = Number(req.params.user_id);
-    const followers = await followService.getFollowers(user_id);
+    const followers = await followService.getFollowers(user_id, req.user?.userId);
     res.status(200).json({ success: true, data: followers });
   } catch (err) {
     next(err);
@@ -38,7 +38,7 @@ const getFollowers = async (req, res, next) => {
 const getFollowings = async (req, res, next) => {
   try {
     const user_id = Number(req.params.user_id);
-    const followings = await followService.getFollowings(user_id);
+    const followings = await followService.getFollowings(user_id, req.user?.userId);
     res.status(200).json({ success: true, data: followings });
   } catch (err) {
     next(err);

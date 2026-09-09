@@ -49,7 +49,17 @@ const topicsQuerySchema = Joi.object({
   level: Joi.number().integer().min(1).max(10).default(1),
 });
 
+/**
+ * GET /api/learning/quiz-results?page=&limit=
+ * 응시 이력 목록. 총 개수를 함께 보여줘야 해서 cursor가 아니라 page/limit을 쓴다.
+ */
+const quizResultsQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(50).default(20),
+});
+
 module.exports = {
+  quizResultsQuerySchema,
   quizAnswerSchema,
   quizIdSchema,
   topicIdSchema,
