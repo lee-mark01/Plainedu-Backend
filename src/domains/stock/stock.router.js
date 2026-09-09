@@ -7,6 +7,7 @@ const chartController = require('./chart.controller');
 const { searchStocksSchema, watchlistBodySchema, watchlistParamsSchema, relatedTermsSchema } = require('./stock.validator');
 const relatedTermsController = require('./relatedTerms.controller');
 const signalsController = require('./signals.controller');
+const companyInfoController = require('./companyInfo.controller');
 const { symbolParamsSchema, chartQuerySchema } = require('./chart.validator');
 
 // 종목 검색 (Stocks 테이블 — 검색바용)
@@ -40,5 +41,12 @@ router.get(
 
 // 현재가 + 등락률 (헤더 초기값 — 실시간 갱신은 Socket.IO 'price' 이벤트)
 router.get('/:symbol/quote', validate(symbolParamsSchema, 'params'), chartController.getQuote);
+
+// 기업 정보 (요청 17). 데이터 소스가 없는 필드는 null로 내려간다 — 요청서가 지정한 계약이다.
+router.get(
+  '/:symbol/company-info',
+  validate(symbolParamsSchema, 'params'),
+  companyInfoController.getCompanyInfo
+);
 
 module.exports = router;

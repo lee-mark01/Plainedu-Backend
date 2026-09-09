@@ -146,6 +146,7 @@
 | GET | `/api/stocks/signals` | — | 투자 신호. `POPULAR`(관심목록·글 태그 기준) / `RSI_OVERSOLD`(14일 RSI≤30) / `MACD_GOLDEN_CROSS`(막 상향 돌파한 봉). **지표는 일봉으로 서버가 직접 계산**(차트 1Y 캐시 재사용 → 대개 추가 크레딧 0). `as_of`(계산 시각)와 신호별 `based_on`(반영한 마지막 봉)을 함께 준다. 15분 캐시 |
 | GET | `/api/stocks/related-terms?q=&limit=` | — | 연관 검색어. 글 태그·관심목록 **동시 출현**으로 추천(검색 로그·업종 정보가 없어 이 신호뿐). `matched_by`로 `related`(연관)와 `prefix`(검색어 보정) 구분. 데이터가 없으면 빈 배열 |
 | GET | `/api/stocks/:symbol/quote` | — | 현재가+등락률 (초기값 — 실시간은 WS `price`) |
+| GET | `/api/stocks/:symbol/company-info` | — | 기업 정보. ⚠️ `description`·`region`·`sector`·`industry`·`industry_rank`·`market_cap`·`as_of`는 **데이터 소스 미연동으로 항상 null** (요청서가 지정한 계약 — 프론트가 숨김 처리). 지금 채워지는 건 `stock_code`·`name`·`market`·`currency`. 소스가 붙어도 응답 구조는 안 바뀐다. 없는 종목 404 `STOCK_NOT_FOUND` |
 
 ## stock-alert — 종목 알림 (`/api/stock-alerts`, 전 라우트 🔒)
 
