@@ -1462,7 +1462,21 @@ paths:
     post:
       tags: [learning]
       summary: 퀴즈 세션 완료 (결과 페이지)
-      description: '주제의 **모든 문제를 한 번씩은** 풀어야 완료된다. 미완이면 400 `QUIZ_NOT_FINISHED`.'
+      description: |
+        주제의 **모든 문제를 한 번씩은** 풀어야 완료된다. 미완이면 400 `QUIZ_NOT_FINISHED`.
+
+        응답에 숫자가 두 벌 있다. **기준이 다르므로 화면 목적에 맞게 골라 쓴다.**
+
+        - `correctCount`·`score` — **누적** 기준. "한 번이라도 정답이면 정답"이라
+          재도전할수록 올라간다. `UserProgress`에 저장되는 값이고 기존 계약이다.
+        - `attempt` — **이번 회차** 기준. 이 응시에서 실제로 맞은 개수이며
+          `GET /api/learning/quiz-results`의 이력과 같은 값이다.
+
+        재도전이 없으면 두 값이 같고, 재도전할 때만 갈린다. 완료 화면에서 누적을 보여주면
+        이력 목록의 점수와 달라 보이므로, 회차 점수를 쓰는 쪽이 일관된다.
+
+        `attempt`는 답안 없이 완료를 부르거나 이미 닫힌 회차면 `null`이다 —
+        완료를 두 번 눌러도 첫 결과가 유지된다.
       parameters:
         - $ref: '#/components/parameters/TopicId'
       responses:
@@ -1487,6 +1501,57 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/learning/quiz-results:
+    get:
+      tags: [learning]
+      summary: 퀴즈 응시 이력
+      description: |
+        **완료된 회차만** 최신순으로 내려간다. 문제만 풀고 완료를 누르지 않은 회차는 이력이
+        아니므로 나오지 않는다.
+
+        점수는 **확정 시점 스냅샷**이다. 로그에서 다시 계산하지 않으므로, 나중에 그 주제에
+        퀴즈가 추가·삭제돼도 과거 회차의 점수가 바뀌지 않는다.
+
+        `total_quiz_count`는 그 회차에 푼 문제 수가 아니라 **주제의 전체 문제 수**다.
+        회차마다 분모가 달라지면 회차끼리 비교할 수 없고, 안 푼 문제는 못 맞힌 것으로 본다.
+
+        총 개수를 함께 주므로 `page`/`limit` 방식이다(커뮤니티 피드의 cursor와 다름).
+
+        > 이 이력은 이 기능이 배포된 이후의 응시부터 쌓인다. 그 전 기록에는 회차 정보가
+        > 없어 소급해서 묶을 수 없다.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          results:
+                            type: array
+                            items: { $ref: '#/components/schemas/QuizResult' }
+                          pagination:
+                            type: object
+                            properties:
+                              page: { type: integer, example: 1 }
+                              limit: { type: integer, example: 20 }
+                              total: { type: integer, example: 7 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   # ─────────────────────────── community ──────────────────────────
@@ -4096,9 +4161,32 @@ components:
         topicId: { type: integer, example: 3 }
         topicTitle: { type: string, example: 주식 기본 개념 }
         totalQuestions: { type: integer, example: 4 }
-        correctCount: { type: integer, example: 3 }
-        score: { type: integer, description: '0~100 정수', example: 75 }
+        correctCount: { type: integer, description: '**누적** — 한 번이라도 정답이면 정답', example: 3 }
+        score: { type: integer, description: '0~100 정수. 누적 기준', example: 75 }
         message: { type: string, example: '좋아요! 조금만 더! 💪' }
+        attempt:
+          type: object
+          nullable: true
+          description: |
+            **이번 회차** 기준 결과. `GET /api/learning/quiz-results`의 이력과 같은 값이다.
+            답안 없이 완료를 부르거나 이미 닫힌 회차면 `null`.
+          properties:
+            attemptId: { type: integer, example: 12 }
+            correctCount: { type: integer, description: 이 회차에서 맞은 문제 수, example: 2 }
+            totalQuestions: { type: integer, description: 주제의 전체 문제 수, example: 3 }
+            score: { type: integer, example: 67 }
+
+    QuizResult:
+      type: object
+      description: 완료된 응시 회차 한 건. 값은 확정 시점 스냅샷이다.
+      properties:
+        attempt_id: { type: integer, example: 12 }
+        topic_id: { type: integer, example: 3 }
+        topic_title: { type: string, example: 캔들차트 읽는 법 }
+        correct_count: { type: integer, description: 이 회차에서 맞은 문제 수, example: 2 }
+        total_quiz_count: { type: integer, description: 주제의 전체 문제 수, example: 3 }
+        score: { type: integer, description: '0~100 정수', example: 67 }
+        completed_at: { type: string, format: date-time }
 
     # ── community ──
     CreatePostRequest:

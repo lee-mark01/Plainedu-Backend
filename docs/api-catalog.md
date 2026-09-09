@@ -91,7 +91,8 @@
 | PATCH | `/api/learning/shortforms/:shortformId/save` | 숏폼 저장 토글 |
 | GET | `/api/learning/topics/:topicId/quizzes` | 퀴즈 문제 조회 |
 | POST | `/api/learning/quizzes/:quizId/answer` | 퀴즈 단건 채점. body `{ answer }` |
-| POST | `/api/learning/topics/:topicId/quizzes/complete` | 퀴즈 세션 완료 (결과 페이지) |
+| POST | `/api/learning/topics/:topicId/quizzes/complete` | 퀴즈 세션 완료 (결과 페이지). 응답에 숫자가 두 벌 — `correctCount`·`score`는 **누적**(한 번이라도 정답이면 정답, UserProgress 값), `attempt`는 **이번 회차** 기준. 재도전 시 갈린다 |
+| GET | `/api/learning/quiz-results?page=&limit=` | 퀴즈 응시 이력. **완료된 회차만** 최신순. 점수는 확정 시점 스냅샷이라 나중에 퀴즈가 추가·삭제돼도 안 바뀐다. `total_quiz_count`는 그 회차에 푼 수가 아니라 **주제의 전체 문제 수** |
 
 ## community — 커뮤니티 (`/api/community`)
 
