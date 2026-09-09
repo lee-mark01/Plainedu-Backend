@@ -659,6 +659,11 @@ paths:
                     stock_alert: { type: boolean }
                     vote_start: { type: boolean }
                     portfolio_changed: { type: boolean }
+                team:
+                  type: object
+                  minProperties: 1
+                  properties:
+                    join_request: { type: boolean }
                 community:
                   type: object
                   minProperties: 1
@@ -916,8 +921,25 @@ paths:
   /api/teams/join:
     post:
       tags: [team]
-      summary: 팀 가입
-      description: '가입 코드(8자)로 참여한다. **같은 학교 팀만** 가능. 요청자의 `position`도 함께 갱신된다.'
+      summary: 팀 가입 신청
+      description: |
+        가입 코드(8자)를 맞게 입력하면 **가입 신청**이 접수되고, 팀장이 승인해야 팀에 들어간다.
+        **같은 학교 팀만** 신청할 수 있다.
+
+        > ⚠️ **동작이 바뀌었다.** 이전에는 코드만으로 즉시 가입돼 팀 상세를 돌려줬다.
+        > 이제는 신청 결과(`request_id`, `status: PENDING`)를 돌려주므로 화면도
+        > "가입 완료"가 아니라 "승인 대기"로 표시해야 한다.
+
+        정책:
+        - **정원이 찬 팀에는 신청할 수 없다** (409 `TEAM_FULL`) — 승인될 수 없는 신청을 받으면
+          헛된 대기가 생긴다
+        - **대기 중 신청은 하나만.** 다른 팀에 새로 신청하면 기존 대기 건이 자동 취소된다
+        - 같은 팀에 중복 신청은 409 `ALREADY_REQUESTED`
+        - 거절된 뒤 다시 신청할 수 있다 (쿨다운 없음)
+        - 신청 시 **팀장에게 알림**이 간다 (`TEAM_JOIN_REQUEST`)
+
+        `position`은 신청 시 받아두고 **승인 시점에 적용된다** — 팀장이 신청자의 포지션을
+        대신 고를 수는 없다.'
       requestBody:
         required: true
         content:
@@ -935,7 +957,7 @@ paths:
                 position: { $ref: '#/components/schemas/Position' }
       responses:
         '200':
-          description: 가입 완료 (팀 상세 반환)
+          description: 신청 접수 (아직 팀원이 아니다)
           content:
             application/json:
               schema:
@@ -943,7 +965,16 @@ paths:
                   - $ref: '#/components/schemas/Success'
                   - type: object
                     properties:
-                      data: { $ref: '#/components/schemas/Team' }
+                      data:
+                        type: object
+                        properties:
+                          request_id: { type: integer, example: 31 }
+                          status: { type: string, enum: [PENDING] }
+                          team:
+                            type: object
+                            properties:
+                              id: { type: integer, example: 5 }
+                              name: { type: string, example: Investars }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
@@ -957,7 +988,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '409':
-          description: 이미 팀 소속 / 정원 초과
+          description: 이미 팀 소속(`ALREADY_IN_TEAM`) / 정원 초과(`TEAM_FULL`) / 중복 신청(`ALREADY_REQUESTED`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1106,6 +1137,151 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
         '404': { description: 같은 팀의 팀원이 아님 (`MEMBER_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/invitations:
+    get:
+      tags: [team]
+      summary: 초대 코드 조회
+      description: |
+        팀장만 볼 수 있다. 승인제에서 코드는 즉시 가입 열쇠가 아니라 **신청 관문**이다.
+
+        `remaining_slots`가 0이면 신청 자체가 막히므로 프론트가 미리 안내할 수 있다.
+
+        `is_expired`는 항상 `false`다 — 시간 만료를 두지 않았다. 팀장이 모르는 사이 코드가
+        죽어 신입이 못 들어오는 상황을 만들지 않기 위해서다. 실제 만료는 **재발급**으로 표현한다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamInvitation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음(`NO_TEAM`) 또는 팀장이 아님(`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [team]
+      summary: 초대 코드 재발급
+      description: |
+        팀장만 호출할 수 있다. 새 코드를 만들고 **이전 코드는 즉시 무효**가 된다.
+
+        코드가 유출돼 스팸 신청이 들어올 때 끊는 유일한 수단이다 — 지금까지 코드는 팀 생성 시
+        한 번 만들어지고 영구 고정이었다.
+      responses:
+        '200':
+          description: 재발급된 코드
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TeamInvitation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없음(`NO_TEAM`) 또는 팀장이 아님(`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/teams/me/join-requests:
+    get:
+      tags: [team]
+      summary: 가입 신청 목록
+      description: |
+        팀장만 볼 수 있다. **대기 건이 먼저**, 그다음 최근 처리 순으로 온다.
+        `status`로 걸러볼 수 있고, 생략하면 전체 이력이다.
+
+        신청자 닉네임과 희망 포지션을 함께 주므로 목록마다 유저를 다시 조회할 필요가 없다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED] }
+          description: 생략하면 전체
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          requests:
+                            type: array
+                            items: { $ref: '#/components/schemas/TeamJoinRequest' }
+                          pagination:
+                            type: object
+                            properties:
+                              page: { type: integer, example: 1 }
+                              limit: { type: integer, example: 20 }
+                              total: { type: integer, example: 3 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [team]
+      summary: 가입 신청 승인·거절
+      description: |
+        팀장만 호출할 수 있다. 승인과 멤버 등록이 **한 트랜잭션**이라 "승인은 됐는데 팀원이
+        아닌" 상태가 생기지 않는다.
+
+        승인 시 두 가지를 **다시** 확인한다 — 신청 시점과 승인 시점 사이에 상황이 바뀔 수 있다:
+        - 정원이 그 사이 찼으면 409 `TEAM_FULL`
+        - 신청자가 그 사이 다른 팀에 들어갔으면 409 `APPLICANT_IN_TEAM`
+
+        같은 신청을 두 번 처리하거나 두 팀장이 동시에 누르면 **첫 판정만 적용**되고
+        409 `REQUEST_ALREADY_PROCESSED`가 난다.
+
+        승인되면 신청 시 받아둔 `position`이 신청자에게 적용된다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_id, decision]
+              properties:
+                request_id: { type: integer, example: 31 }
+                decision: { type: string, enum: [APPROVE, REJECT] }
+      responses:
+        '200':
+          description: 처리 결과
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          request_id: { type: integer, example: 31 }
+                          status: { type: string, enum: [APPROVED, REJECTED] }
+                          user_id:
+                            type: integer
+                            description: 승인일 때만 담긴다
+                            example: 12
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
+        '404': { description: 우리 팀의 신청이 아님 (`REQUEST_NOT_FOUND`) }
+        '409': { description: 이미 처리됨 / 정원 초과 / 신청자가 다른 팀 소속 }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/teams/me/rules:
@@ -3840,6 +4016,10 @@ components:
             stock_alert: { type: boolean, example: true }
             vote_start: { type: boolean, example: true }
             portfolio_changed: { type: boolean, example: true }
+        team:
+          type: object
+          properties:
+            join_request: { type: boolean, example: true, description: 팀장에게 가는 가입 신청 알림 }
         community:
           type: object
           properties:
@@ -3973,6 +4153,35 @@ components:
               inserted: { type: integer, example: 2372 }
 
     # ── team ──
+    TeamInvitation:
+      type: object
+      properties:
+        team_id: { type: integer, example: 5 }
+        join_code: { type: string, minLength: 8, maxLength: 8, example: A1B2C3D4 }
+        remaining_slots:
+          type: integer
+          description: 남은 자리. 0이면 신청 자체가 막힌다.
+          example: 2
+        max_member_count: { type: integer, example: 4 }
+        current_member_count: { type: integer, example: 2 }
+        is_expired:
+          type: boolean
+          description: 항상 false — 시간 만료는 두지 않고 재발급으로 이전 코드를 무효화한다.
+          example: false
+
+    TeamJoinRequest:
+      type: object
+      properties:
+        request_id: { type: integer, example: 31 }
+        user_id: { type: integer, example: 12 }
+        nickname: { type: string, example: 인천인 }
+        position:
+          allOf: [{ $ref: '#/components/schemas/Position' }]
+          description: 신청 시 고른 값. 승인 시점에 적용된다.
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELED] }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
     TeamExitOptions:
       type: object
       description: |

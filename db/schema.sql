@@ -376,6 +376,32 @@ CREATE TABLE IF NOT EXISTS TeamRules (
     FOREIGN KEY (updated_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 3-3c. TeamJoinRequests (팀 가입 신청)
+-- 정책(2026-09-09): 코드를 맞게 입력하면 가입 "신청"이 되고 팀장이 승인해야 들어간다.
+-- 대기 중 신청은 유저당 하나만 — MySQL에 부분 유니크 인덱스가 없어 서비스가 트랜잭션으로
+-- 잠그고 보장한다. 인덱스는 그 조회를 위해 둔다.
+-- CANCELED가 있는 이유: 다른 팀에 새로 신청하면 기존 대기 건을 지우지 않고 취소로 남긴다.
+-- position을 신청 시 받는 이유: 승인은 팀장이 하는데 신청자의 포지션을 대신 고를 수 없다.
+CREATE TABLE IF NOT EXISTS TeamJoinRequests (
+  id            INT       NOT NULL AUTO_INCREMENT,
+  team_id       INT       NOT NULL,
+  user_id       INT       NOT NULL,
+  position      ENUM('TRADER','ANALYST') NOT NULL,
+  status        ENUM('PENDING','APPROVED','REJECTED','CANCELED') NOT NULL DEFAULT 'PENDING',
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at  TIMESTAMP NULL,
+  processed_by  INT       NULL,                          -- 어느 팀장이 처리했나
+  PRIMARY KEY (id),
+  INDEX idx_tjr_team_status (team_id, status, created_at),
+  INDEX idx_tjr_user_status (user_id, status),
+  CONSTRAINT fk_tjr_team
+    FOREIGN KEY (team_id) REFERENCES Teams(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tjr_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_tjr_processed_by
+    FOREIGN KEY (processed_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 3-4. TeamActivePortfolios
 CREATE TABLE IF NOT EXISTS TeamActivePortfolios (
   team_id                   INT            NOT NULL,
@@ -736,7 +762,7 @@ CREATE TABLE IF NOT EXISTS Notifications (
   id            INT          NOT NULL AUTO_INCREMENT,
   user_id       INT          NOT NULL,
   sender_id     INT          NOT NULL,
-  type          ENUM('FOLLOWEE_POST','POST_LIKE','POST_COMMENT','COMMENT_REPLY','VOTE_START','PORTFOLIO_CHANGED') NOT NULL,
+  type          ENUM('FOLLOWEE_POST','POST_LIKE','POST_COMMENT','COMMENT_REPLY','VOTE_START','PORTFOLIO_CHANGED','TEAM_JOIN_REQUEST') NOT NULL,
   reference_id  INT          NULL,
   content       VARCHAR(255) NULL,
   is_read       BOOLEAN      NOT NULL DEFAULT FALSE,
