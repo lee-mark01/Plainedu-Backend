@@ -21,7 +21,9 @@ const DUMMY_USERS = [
   { email: 'dummy.otherschool@test.com', nickname: '더미다른학교유저', school: '테스트대학교', verified: true },
   { email: 'dummy.unverified@test.com', nickname: '더미미인증유저', school: '테스트고등학교', verified: false },
   { email: 'dummy.noschool@test.com', nickname: '더미학교없음유저', school: null, verified: false },
-  { email: 'dummy.admin@test.com', nickname: '더미관리자', school: '테스트고등학교', verified: true, role: 'ADMIN' },
+  // 학교를 주지 않는 이유: 계좌·리그에 참여하지 않는 운영 계정이다. 정의가 seed-demo.js와
+  // 같아야 한다 — 두 시드가 같은 이메일을 다르게 정의하면 마지막에 돈 쪽이 이긴다.
+  { email: 'dummy.admin@test.com', nickname: '더미관리자', school: null, verified: false, role: 'ADMIN' },
 ];
 
 // 더미 학교가 없으면 생성하고 id를 반환 (있으면 기존 것 재사용)

@@ -25,6 +25,7 @@ const AppError = require('../../src/errors/AppError');
 const { signAccessToken } = require('../../src/utils/jwt');
 const accountService = require('../../src/domains/account/account.service');
 const teamService = require('../../src/domains/team/team.service');
+const joinRequestService = require('../../src/domains/team/joinRequest.service');
 const teamRepository = require('../../src/domains/team/team.repository');
 const tradingService = require('../../src/domains/trading/trading.service');
 const teamOrderService = require('../../src/domains/trading/teamOrder.service');
@@ -50,6 +51,14 @@ const DUMMY_USERS = [
   // 엣지 케이스 (학교인증/팀가입 실패 케이스 테스트용)
   { email: 'dummy.unverified@test.com', nickname: '더미미인증', school: '테스트고등학교', verified: false },
   { email: 'dummy.noschool@test.com', nickname: '더미학교없음', school: null, verified: false },
+  // 관리자 (신고 목록/제재 부과/이의신청 처리 화면 확인용)
+  //
+  // 시드에 두는 이유: cleanup이 QA 계정을 DELETE하고 다시 INSERT하므로, 손으로 승격해두면
+  // 다음 배포에 USER로 돌아간다. 시드가 만들면 배포마다 관리자가 보장된다.
+  //
+  // 학교를 주지 않는 이유: 계좌·리그에 참여하지 않는 운영 계정이다. 리그 순위에 관리자가
+  // 섞이면 프론트가 화면에서 걸러내야 한다.
+  { email: 'dummy.admin@test.com', nickname: '더미관리자', school: null, verified: false, role: 'ADMIN' },
 ];
 
 const REQUIRED_STOCKS = ['AAPL', 'MSFT', 'TSLA', 'GOOGL', 'NVDA'];
@@ -83,15 +92,18 @@ const upsertSchool = async ({ schoolName, region }) => {
   return rows[0].id;
 };
 
+// role을 UPDATE 절에도 두는 이유: cleanup 없이 이 시드만 다시 돌리는 경우(npm run seed:demo)
+// 행이 살아 있는데, 그때도 role이 정의대로 맞춰져야 한다.
 const upsertUser = async (u, school_id) => {
   await pool.query(
     `INSERT INTO Users (email, nickname, role, provider, school_id, school_is_verified)
-     VALUES (?, ?, 'USER', 'local', ?, ?)
+     VALUES (?, ?, ?, 'local', ?, ?)
      ON DUPLICATE KEY UPDATE
        nickname = VALUES(nickname),
+       role = VALUES(role),
        school_id = VALUES(school_id),
        school_is_verified = VALUES(school_is_verified)`,
-    [u.email, u.nickname, school_id, u.verified ? 1 : 0]
+    [u.email, u.nickname, u.role || 'USER', school_id, u.verified ? 1 : 0]
   );
   const [rows] = await pool.query('SELECT id FROM Users WHERE email = ?', [u.email]);
   return rows[0].id;
@@ -156,10 +168,15 @@ const runOrSkip = async (label, fn) => {
     }
 
     // 팀원 2명 가입 (Analyst 포지션)
+    //
+    // 가입 정책이 "코드 입력 → 팀장 승인"으로 바뀌었다(요청 22~25). joinTeam은 이제 신청만
+    // 만들고 TeamMembers에는 넣지 않으므로, 승인까지 해야 실제로 팀원이 된다.
+    // 승인을 빼면 모델포트폴리오 단계가 "소속된 팀이 없습니다"로 실패한다.
     for (const email of ['dummy.member1@test.com', 'dummy.member2@test.com']) {
-      await runOrSkip(`팀 가입(${email} → Analyst)`, () =>
-        teamService.joinTeam(userIds[email], team.join_code, 'ANALYST')
-      );
+      await runOrSkip(`팀 가입(${email} → Analyst)`, async () => {
+        const { request_id } = await teamService.joinTeam(userIds[email], team.join_code, 'ANALYST');
+        await joinRequestService.decideJoinRequest(leaderId, request_id, 'APPROVE');
+      });
     }
 
     // 개인 매수 주문
@@ -277,6 +294,7 @@ const runOrSkip = async (label, fn) => {
       DUMMY_USERS.map((u) => ({
         email: u.email,
         nickname: u.nickname,
+        role: u.role || 'USER',
         school: u.school || '(없음)',
         school_is_verified: u.verified,
         team: ['dummy.leader@test.com', 'dummy.member1@test.com', 'dummy.member2@test.com'].includes(u.email)

@@ -193,6 +193,11 @@ docker compose exec db mysql -u root -p"$DB_PASSWORD" "$DB_NAME" \
 관리자 전용 경로는 `/api/admin/*`이며 신고 목록·제재 부과·이의신청 처리를 담당한다.
 전용 화면이 없는 동안에는 Swagger UI(`/api-docs`)에서 Authorize 후 직접 호출하면 된다.
 
+> **QA용 관리자는 따로 있다.** 시드가 `dummy.admin@test.com`(role=ADMIN)을 배포마다 만들고,
+> `POST /api/auth/qa-session`의 `persona: "admin"`으로 로그인한다 — 위 수동 승격은 **실제 운영자
+> 계정에만** 필요하다. QA 계정은 cleanup이 매 배포에 지우고 다시 만들므로 수동 승격이 남지 않는다.
+> 프론트 전달 문서는 [qa-test-accounts.md](./qa-test-accounts.md).
+
 ---
 
 ## 6. GitHub Actions CD 설정
@@ -231,6 +236,12 @@ docker compose up -d --build
 
 # 마이그레이션
 docker compose exec app npm run migrate
+
+# QA 데이터 재생성 (계정 삭제 → 재생성 → 신규 기능 데이터). CD가 배포마다 자동 실행한다
+docker compose exec app npm run seed:main-qa
+
+# 신규 기능 데이터만 다시 넣기 (계정은 그대로)
+docker compose exec app npm run seed:qa-features
 
 # 컨테이너 전체 중지
 docker compose down
