@@ -863,6 +863,63 @@ CREATE TABLE IF NOT EXISTS CommunityReports (
     FOREIGN KEY (reporter_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 6-12. UserRestrictions (이용 제한)
+-- 부과 주체는 관리자(Users.role = ADMIN)다. 신고 누적 자동 제재는 넣지 않았다 —
+-- 조직적 신고에 악용될 수 있고 사람이 판단하는 편이 오판이 적다.
+-- type이 값 하나뿐인 이유: 지금 필요한 건 커뮤니티 전체 금지뿐이다(2026-09-09 결정).
+-- 컬럼을 빼는 대신 ENUM으로 둬서 종류가 늘 때 기존 행 백필이 필요 없게 했다.
+-- ends_at NULL은 무기한. 만료는 배치가 아니라 조회 시점에 판단한다
+-- (status=ACTIVE AND (ends_at IS NULL OR ends_at > NOW())) — 배치가 늦어도 오판이 없다.
+CREATE TABLE IF NOT EXISTS UserRestrictions (
+  id          INT          NOT NULL AUTO_INCREMENT,
+  user_id     INT          NOT NULL,
+  type        ENUM('COMMUNITY_BLOCK') NOT NULL DEFAULT 'COMMUNITY_BLOCK',
+  reason      ENUM('SPAM','ABUSE','ADULT','FALSE_INFO','ETC') NOT NULL,
+  detail      VARCHAR(500) NULL,
+  starts_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ends_at     TIMESTAMP    NULL,                       -- NULL = 무기한
+  status      ENUM('ACTIVE','LIFTED','EXPIRED') NOT NULL DEFAULT 'ACTIVE',
+  created_by  INT          NULL,                       -- 어느 관리자가 부과했나
+  created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  lifted_by   INT          NULL,
+  lifted_at   TIMESTAMP    NULL,
+  PRIMARY KEY (id),
+  INDEX idx_ur_user_status (user_id, status, ends_at),  -- 쓰기 경로마다 확인하는 조회
+  INDEX idx_ur_status_created (status, created_at),
+  CONSTRAINT fk_ur_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ur_created_by
+    FOREIGN KEY (created_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_ur_lifted_by
+    FOREIGN KEY (lifted_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6-13. RestrictionAppeals (이의신청)
+-- status 네 값은 프론트 요청서가 지정한 접수·검토 중·승인·반려에 대응한다.
+-- 제한 건당 하나만 받는다(uq_ra_restriction) — 중복 접수를 허용하면 관리자 목록이
+-- 같은 건으로 채워지고 어느 걸 처리해야 하는지 모호해진다.
+CREATE TABLE IF NOT EXISTS RestrictionAppeals (
+  id              INT           NOT NULL AUTO_INCREMENT,
+  restriction_id  INT           NOT NULL,
+  user_id         INT           NOT NULL,
+  content         VARCHAR(1000) NOT NULL,
+  status          ENUM('RECEIVED','REVIEWING','APPROVED','REJECTED') NOT NULL DEFAULT 'RECEIVED',
+  admin_comment   VARCHAR(500)  NULL,
+  created_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  processed_at    TIMESTAMP     NULL,
+  processed_by    INT           NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ra_restriction (restriction_id),
+  INDEX idx_ra_user_created (user_id, created_at),
+  INDEX idx_ra_status_created (status, created_at),
+  CONSTRAINT fk_ra_restriction
+    FOREIGN KEY (restriction_id) REFERENCES UserRestrictions(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ra_user
+    FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_ra_processed_by
+    FOREIGN KEY (processed_by) REFERENCES Users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- =============================================================================
 -- 후처리: 순환/순서 의존 FK
 -- =============================================================================

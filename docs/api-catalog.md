@@ -126,8 +126,13 @@
 | GET | `/api/community/blocks?keyword=&page=&limit=` | 🔒 | 차단 목록. 관리 화면이라 **page/limit 방식**(피드의 cursor와 다름) |
 | POST | `/api/community/blocks` | 🔒 | 사용자 차단. body `{ user_id }` — 이미 차단해도 성공(멱등). **차단 시 서로의 팔로우가 끊긴다** |
 | DELETE | `/api/community/blocks/:userId` | 🔒 | 차단 해제 — 목록에 없으면 404. 팔로우는 복원되지 않는다 |
+| GET | `/api/community/restrictions/me` | 🔒 | 내 이용 제한 상태. **제한이 없어도 정상 응답**(`is_restricted: false`). `history`의 `is_effective`로 지금 효력 여부를 판단한다 — `status`만 보면 만료된 건도 ACTIVE로 보인다 |
+| GET | `/api/community/restriction/appeals?page=&limit=` | 🔒 | 내 이의신청 목록. 상태는 접수·검토중·승인·반려 |
+| POST | `/api/community/restriction/appeals` | 🔒 | 이의신청 제출. body `{ restriction_id, content(10~1000자) }`. **자기 제한·유효한 제한·한 번만**. 승인되면 제한이 함께 해제된다 |
 
 **차단 효과**: 선언은 단방향이지만 **가시성은 양방향**이다. 차단 이후 서로의 글·댓글·팔로우 목록·알림에서 상대가 보이지 않는다(조회 8곳에 공통 필터 적용). 비로그인 조회에는 적용되지 않는다 — 보는 사람이 정해지지 않기 때문. 쓰기(차단한 사람 글에 댓글·좋아요)는 아직 막지 않는다.
+
+**이용 제한 중 막히는 것**: 글·댓글 작성/수정, 좋아요, 팔로우 (403 `COMMUNITY_RESTRICTED`). 조회·삭제·북마크·조회수·신고·차단·알림읽음은 막지 않는다 — 자기 글 정리와 자기 보호는 제한 대상이 아니다. 제한 여부는 토큰이 아니라 매 요청 DB에서 확인한다(제재 즉시 적용).
 
 ## stock — 종목/시세 (`/api/stocks`)
 
@@ -152,6 +157,19 @@
 
 `threshold` 단위는 `type`이 정한다 — 가격(USD) / 등락률(%, 음수 가능) / 거래량(주).
 **실제 발송(가격 도달 감지)은 미구현**이다. 이 API는 설정 CRUD까지다.
+
+## admin — 관리자 (`/api/admin`, 전 라우트 🔒 + `role = ADMIN`)
+
+권한 없으면 403 `ADMIN_ONLY`. 첫 관리자는 배포 후 사람이 DB에서 지정한다([deployment-guide.md](deployment-guide.md) §5-1). `role`이 액세스 토큰에 담기므로 **승격 후 재로그인이 필요**하다. 전용 화면이 없는 동안은 Swagger UI에서 직접 호출한다.
+
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/admin/reports?status=&target_type=&page=&limit=` | 신고 목록. **미처리 먼저, 오래된 순**. `target_report_count`(대상별 누적 신고 수)를 함께 준다 — 제재 판단의 핵심 근거 |
+| GET | `/api/admin/restrictions?status=&page=&limit=` | 제한 목록. 효력 있는 것 먼저. `status=EXPIRED`는 저장값이 아니라 `ends_at` 기준 계산 결과 |
+| POST | `/api/admin/restrictions` | 제한 부과. body `{ user_id, reason, [detail], [days] }` — **기간은 days로 받아 서버가 계산**(시간대 해석 어긋남 방지), 생략 시 무기한. 이미 제한 중 409, 관리자 대상 409 |
+| DELETE | `/api/admin/restrictions/:restrictionId` | 제한 해제. 이미 해제됐으면 409 |
+| GET | `/api/admin/appeals?status=&page=&limit=` | 이의신청 목록. **미처리 먼저, 오래된 순** |
+| POST | `/api/admin/appeals/:appealId/decision` | 승인·거절. body `{ decision: APPROVE\|REJECT, [admin_comment] }`. **승인 시 제한도 함께 해제**(한 트랜잭션). 이미 처리됐으면 409 |
 
 ## trading — 모의투자 주문 (`/api/trading`)
 
