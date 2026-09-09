@@ -168,6 +168,33 @@ http://<EC2_PUBLIC_IP>/api/health
 
 ---
 
+## 5-1. 첫 관리자 지정 (수동, 한 번)
+
+관리자 권한은 `Users.role = 'ADMIN'`으로 판정한다. 승격 API를 두지 않았으므로 **첫 관리자는
+사람이 직접 지정한다** — 관리자가 한두 명인 동안은 API가 공격면만 넓힌다.
+
+운영자가 먼저 소셜 로그인으로 계정을 만든 뒤, 그 이메일로 실행한다.
+
+```bash
+docker compose exec db mysql -u root -p"$DB_PASSWORD" "$DB_NAME" \
+  -e "UPDATE Users SET role = 'ADMIN' WHERE email = '<운영자 이메일>';"
+```
+
+확인:
+
+```bash
+docker compose exec db mysql -u root -p"$DB_PASSWORD" "$DB_NAME" \
+  -e "SELECT id, email, role FROM Users WHERE role = 'ADMIN';"
+```
+
+> ⚠️ **승격 후 재로그인이 필요하다.** `role`은 액세스 토큰에 담기므로 이미 발급된 토큰은
+> 여전히 `USER`다. 로그아웃 후 다시 로그인하거나 토큰을 갱신해야 `/api/admin/*`이 열린다.
+
+관리자 전용 경로는 `/api/admin/*`이며 신고 목록·제재 부과·이의신청 처리를 담당한다.
+전용 화면이 없는 동안에는 Swagger UI(`/api-docs`)에서 Authorize 후 직접 호출하면 된다.
+
+---
+
 ## 6. GitHub Actions CD 설정
 
 ### GitHub Secrets 등록

@@ -69,6 +69,8 @@ tags:
     description: 가상계좌 평가 · 자산 추이
   - name: portfolio
     description: 모델포트폴리오(MP) 작성·투표·전략 준수도
+  - name: admin
+    description: 관리자 전용 (`Users.role = ADMIN`) — 신고 검토 · 이용 제한 · 이의신청 처리
   - name: ranking
     description: 시즌 리그 (개인 · 팀 · 소속 2종)
   - name: system
@@ -89,7 +91,7 @@ paths:
         - $ref: '#/components/parameters/OAuthReturnTo'
       responses:
         '302': { description: 카카오 authorization URL로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '`return_to`가 allowlist 밖(`OAUTH_RETURN_TO_INVALID`) / 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`) / 공급자 설정 누락(`OAUTH_CONFIG_MISSING`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/naver/start:
@@ -102,7 +104,7 @@ paths:
         - $ref: '#/components/parameters/OAuthReturnTo'
       responses:
         '302': { description: 네이버 authorization URL로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '`return_to`가 allowlist 밖(`OAUTH_RETURN_TO_INVALID`) / 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`) / 공급자 설정 누락(`OAUTH_CONFIG_MISSING`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/oauth-ticket:
@@ -119,7 +121,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'ticket이 없거나 이미 사용됨·만료됨 (`OAUTH_TICKET_INVALID`)' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/auth/kakao:
@@ -252,7 +254,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/LoginOk' }
         '201': { $ref: '#/components/responses/LoginCreated' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'Firebase 토큰 누락(`FIREBASE_TOKEN_REQUIRED`) 또는 토큰에 이메일 없음(`FIREBASE_EMAIL_REQUIRED`)' }
         '401':
           description: Firebase 토큰이 유효하지 않음 (`FIREBASE_TOKEN_INVALID`)
           content:
@@ -303,7 +305,7 @@ paths:
                 email: { type: string, format: email }
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: '대학 도메인이 아닌 이메일 (`INVALID_UNIVERSITY_EMAIL`)' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { description: 요청 한도 초과 (`RATE_LIMITED`). 발송은 시간당 3회. }
         '500': { $ref: '#/components/responses/ServerError' }
@@ -442,7 +444,7 @@ paths:
           description: 백엔드가 발급하고 검증하는 CSRF state
       responses:
         '302': { description: 허용된 프론트 callback으로 이동 }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: 'state 불일치·만료(`OAUTH_STATE_INVALID`) 또는 지원하지 않는 공급자(`OAUTH_PROVIDER_INVALID`)' }
 
   # ───────────────────────────── user ─────────────────────────────
   /api/users:
@@ -978,12 +980,12 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
-          description: 학교 선택 또는 대학 이메일 인증 필요 / 다른 학교의 팀
+          description: 학교 선택 또는 대학 이메일 인증 필요 / 다른 학교의 팀 (`SCHOOL_MISMATCH`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '404':
-          description: 유효하지 않은 가입 코드
+          description: 유효하지 않은 가입 코드 (`INVALID_JOIN_CODE`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1281,7 +1283,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: 소속된 팀이 없거나 팀장이 아님 (`NOT_TEAM_LEADER`) }
         '404': { description: 우리 팀의 신청이 아님 (`REQUEST_NOT_FOUND`) }
-        '409': { description: 이미 처리됨 / 정원 초과 / 신청자가 다른 팀 소속 }
+        '409': { description: 이미 처리됨(`REQUEST_ALREADY_PROCESSED`) / 정원 초과(`TEAM_FULL`) / 신청자가 다른 팀 소속(`APPLICANT_IN_TEAM`) }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/teams/me/rules:
@@ -1754,6 +1756,7 @@ paths:
                       data: { $ref: '#/components/schemas/Post' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '500': { $ref: '#/components/responses/ServerError' }
     get:
       tags: [community]
@@ -1876,7 +1879,7 @@ paths:
                       data: { $ref: '#/components/schemas/Post' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { description: '권한 없음(작성자 아님) 또는 이용 제한 중 (`COMMUNITY_RESTRICTED`)' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:
@@ -1952,6 +1955,7 @@ paths:
                       data: { $ref: '#/components/schemas/Comment' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404':
           description: 게시글 또는 부모 댓글 없음
           content:
@@ -2013,7 +2017,7 @@ paths:
                       data: { $ref: '#/components/schemas/Comment' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
+        '403': { description: '권한 없음(작성자 아님) 또는 이용 제한 중 (`COMMUNITY_RESTRICTED`)' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
     delete:
@@ -2057,6 +2061,7 @@ paths:
                         properties:
                           liked: { type: boolean, example: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -2081,6 +2086,7 @@ paths:
                         properties:
                           liked: { type: boolean, example: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/ServerError' }
 
@@ -2249,6 +2255,7 @@ paths:
                           followed: { type: boolean, example: true }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: '이용 제한 중 (`COMMUNITY_RESTRICTED`) — 글·댓글 작성/수정, 좋아요, 팔로우가 막힌다' }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/community/users/{user_id}/follow/counts:
@@ -2460,6 +2467,114 @@ paths:
                           is_blocked: { type: boolean, example: false }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { description: 차단 목록에 없는 사용자 (`BLOCK_NOT_FOUND`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/restrictions/me:
+    get:
+      tags: [community]
+      summary: 내 이용 제한 상태
+      description: |
+        **제한이 없는 경우도 정상 응답이다** — `is_restricted: false`, `current: null`.
+        404를 내면 프론트가 오류 처리로 분기하게 된다.
+
+        `current.ends_at`이 `null`이면 무기한 제한이다. `can_appeal`은 이의신청을 아직 하지
+        않은 유효한 제한에서만 `true`다 (제한 건당 한 번만 신청할 수 있다).
+
+        `history`는 지난 제한까지 포함한다. `status`만 보면 만료된 건도 `ACTIVE`로 보이므로
+        지금 효력이 있는지는 `is_effective`로 판단한다 — 만료를 배치로 처리하지 않고 조회
+        시점에 시각을 비교하기 때문이다.
+
+        제한 중에도 이 조회와 이의신청은 할 수 있다.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MyRestriction' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/community/restriction/appeals:
+    get:
+      tags: [community]
+      summary: 내 이의신청 목록
+      description: |
+        제출한 이의신청과 처리 상태를 최신순으로 준다.
+        `status`는 `RECEIVED`(접수) · `REVIEWING`(검토 중) · `APPROVED`(승인) · `REJECTED`(반려).
+
+        `admin_comment`는 관리자가 남긴 답변이며 처리 전에는 `null`이다.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeals:
+                            type: array
+                            items: { $ref: '#/components/schemas/RestrictionAppeal' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [community]
+      summary: 이의신청 제출
+      description: |
+        **자기 제한, 유효한 제한, 한 번만** 신청할 수 있다.
+
+        남의 제한이나 이미 풀린 제한에 신청하면 `404 RESTRICTION_NOT_APPEALABLE`이다 —
+        "그 제한이 존재한다"는 사실 자체를 노출하지 않기 위해 한 메시지로 묶었다.
+
+        승인되면 **제한이 함께 해제된다** — 받아들였는데 제한이 남으면 결정이 무의미하다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restriction_id, content]
+              properties:
+                restriction_id: { type: integer, example: 7 }
+                content: { type: string, minLength: 10, maxLength: 1000 }
+      responses:
+        '201':
+          description: 접수 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeal_id: { type: integer, example: 3 }
+                          restriction_id: { type: integer, example: 7 }
+                          status: { type: string, enum: [RECEIVED] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: 이의신청할 수 있는 제한이 아님 (`RESTRICTION_NOT_APPEALABLE`) }
+        '409': { description: 이미 이의신청한 제한 (`ALREADY_APPEALED`) }
         '500': { $ref: '#/components/responses/ServerError' }
 
   /api/community/notifications:
@@ -3631,6 +3746,264 @@ paths:
                 success: true
                 message: Server is running
 
+  # ───────────────────────────── admin ────────────────────────────
+  # 전 경로 `Users.role = ADMIN` 필요. 아니면 403 `ADMIN_ONLY`.
+  # 관리자 지정은 배포 후 사람이 DB에서 한다 (docs/deployment-guide.md §5-1).
+  # role은 액세스 토큰에 담기므로 승격 후 재로그인이 필요하다.
+  /api/admin/reports:
+    get:
+      tags: [admin]
+      summary: 신고 목록 (관리자)
+      description: |
+        제재 판단의 근거다. **미처리(`RECEIVED`) 건이 먼저, 그다음 오래된 순** — 밀린 것부터
+        처리하도록 정렬했다.
+
+        `target_report_count`는 그 대상이 지금까지 받은 **총 신고 수**다. 제재 판단의 핵심
+        근거인데 목록마다 세어보게 하면 안 되므로 함께 준다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [RECEIVED, REVIEWING, RESOLVED, REJECTED] }
+        - name: target_type
+          in: query
+          schema: { type: string, enum: [POST, COMMENT, USER] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reports:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminReport' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/restrictions:
+    get:
+      tags: [admin]
+      summary: 이용 제한 목록 (관리자)
+      description: |
+        **지금 효력이 있는 제한이 먼저**, 그다음 최근 순.
+
+        `status` 필터의 `EXPIRED`는 저장된 상태가 아니라 **계산된 것**이다 — 만료를 배치로
+        바꾸지 않으므로 `status`는 여전히 `ACTIVE`이고 `ends_at`이 지난 건을 가리킨다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, EXPIRED, LIFTED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restrictions:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminRestriction' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+    post:
+      tags: [admin]
+      summary: 이용 제한 부과 (관리자)
+      description: |
+        커뮤니티 활동을 막는다 — 글·댓글 작성과 수정, 좋아요, 팔로우.
+        조회·삭제·북마크·신고·차단은 **막지 않는다** (제한된 사용자도 자기 보호는 해야 한다).
+
+        **기간은 `days`로 받는다.** 서버가 종료 시각을 계산하며, 생략하면 무기한이다.
+        클라이언트가 보낸 시각을 그대로 쓰면 시간대 해석이 갈려 의도한 기간과 어긋난다.
+
+        같은 사용자에게 유효한 제한이 이미 있으면 409 `ALREADY_RESTRICTED`.
+        관리자는 제한할 수 없다 (409 `CANNOT_RESTRICT_ADMIN`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, reason]
+              properties:
+                user_id: { type: integer, example: 12 }
+                reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+                detail: { type: string, maxLength: 500, description: '`reason`이 ETC면 필수' }
+                days:
+                  type: integer
+                  minimum: 1
+                  maximum: 3650
+                  description: 생략하면 무기한
+                  example: 7
+      responses:
+        '201':
+          description: 부과 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restriction_id: { type: integer, example: 7 }
+                          user_id: { type: integer, example: 12 }
+                          reason: { type: string, example: ABUSE }
+                          ends_at: { type: string, format: date-time, nullable: true }
+                          status: { type: string, enum: [ACTIVE] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 존재하지 않는 사용자 (`USER_NOT_FOUND`) }
+        '409': { description: 이미 제한 중(`ALREADY_RESTRICTED`) 또는 관리자 대상(`CANNOT_RESTRICT_ADMIN`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/restrictions/{restrictionId}:
+    delete:
+      tags: [admin]
+      summary: 이용 제한 해제 (관리자)
+      description: 이미 해제된 제한을 다시 해제하면 409 `ALREADY_LIFTED` — 해제 시각이 뒤바뀌지 않는다.
+      parameters:
+        - name: restrictionId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: 해제 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          restriction_id: { type: integer, example: 7 }
+                          status: { type: string, enum: [LIFTED] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 제한 없음 (`RESTRICTION_NOT_FOUND`) }
+        '409': { description: 이미 해제됨 (`ALREADY_LIFTED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/appeals:
+    get:
+      tags: [admin]
+      summary: 이의신청 목록 (관리자)
+      description: '**미처리(`RECEIVED`·`REVIEWING`) 건이 먼저**, 그다음 오래된 순 — 밀린 것부터 처리하도록.'
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeals:
+                            type: array
+                            items: { $ref: '#/components/schemas/AdminAppeal' }
+                          pagination: { $ref: '#/components/schemas/PageInfo' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /api/admin/appeals/{appealId}/decision:
+    post:
+      tags: [admin]
+      summary: 이의신청 승인·거절 (관리자)
+      description: |
+        **승인하면 제한이 함께 해제된다** — 받아들였는데 제한이 남으면 결정이 무의미하다.
+        한 트랜잭션이라 "승인은 됐는데 여전히 제한 중"이 생기지 않는다.
+
+        이미 처리된 신청은 409 `APPEAL_ALREADY_PROCESSED` — 두 관리자가 동시에 눌러도
+        첫 판정만 남는다.
+
+        `admin_comment`는 사용자에게 그대로 보인다.
+      parameters:
+        - name: appealId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                admin_comment: { type: string, maxLength: 500, description: 사용자에게 보이는 답변 }
+      responses:
+        '200':
+          description: 처리 완료
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Success'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          appeal_id: { type: integer, example: 3 }
+                          status: { type: string, enum: [APPROVED, REJECTED] }
+                          restriction_id: { type: integer, example: 7 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 관리자 아님 (`ADMIN_ONLY`) }
+        '404': { description: 이의신청 없음 (`APPEAL_NOT_FOUND`) }
+        '409': { description: 이미 처리됨 (`APPEAL_ALREADY_PROCESSED`) }
+        '500': { $ref: '#/components/responses/ServerError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -4153,6 +4526,115 @@ components:
               inserted: { type: integer, example: 2372 }
 
     # ── team ──
+    PageInfo:
+      type: object
+      description: 페이지 번호 방식 목록의 공통 메타. (커뮤니티 피드는 cursor 방식이라 이걸 쓰지 않는다)
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 42 }
+
+    # ── 이용 제한 ──
+    MyRestriction:
+      type: object
+      properties:
+        is_restricted: { type: boolean, description: 지금 효력이 있는 제한이 있는가, example: false }
+        current:
+          type: object
+          nullable: true
+          description: 제한이 없으면 `null`. 오류가 아니다.
+          properties:
+            restriction_id: { type: integer, example: 7 }
+            type: { type: string, enum: [COMMUNITY_BLOCK] }
+            reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+            detail: { type: string, nullable: true }
+            starts_at: { type: string, format: date-time }
+            ends_at: { type: string, format: date-time, nullable: true, description: 'null이면 무기한' }
+            can_appeal:
+              type: boolean
+              description: 아직 이의신청하지 않았을 때만 true (제한 건당 한 번)
+              example: true
+        history:
+          type: array
+          description: 지난 제한까지 포함. 지금 효력 여부는 `is_effective`로 판단한다.
+          items: { $ref: '#/components/schemas/RestrictionItem' }
+
+    RestrictionItem:
+      type: object
+      properties:
+        restriction_id: { type: integer, example: 7 }
+        type: { type: string, enum: [COMMUNITY_BLOCK] }
+        reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+        detail: { type: string, nullable: true }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [ACTIVE, LIFTED, EXPIRED] }
+        is_effective:
+          type: boolean
+          description: |
+            지금 효력이 있는지. `status`만 보면 만료된 건도 `ACTIVE`로 보인다 —
+            만료를 배치로 바꾸지 않고 조회 시점에 시각을 비교하기 때문이다.
+          example: false
+        created_at: { type: string, format: date-time }
+        lifted_at: { type: string, format: date-time, nullable: true }
+
+    RestrictionAppeal:
+      type: object
+      properties:
+        appeal_id: { type: integer, example: 3 }
+        restriction_id: { type: integer, example: 7 }
+        restriction_reason: { type: string, example: ABUSE }
+        content: { type: string }
+        status: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        admin_comment: { type: string, nullable: true, description: 처리 전에는 null }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    # ── 관리자 ──
+    AdminReport:
+      type: object
+      properties:
+        report_id: { type: integer, example: 17 }
+        reporter:
+          type: object
+          properties:
+            user_id: { type: integer, example: 9 }
+            nickname: { type: string, example: 신고자 }
+        target_type: { type: string, enum: [POST, COMMENT, USER] }
+        target_id: { type: integer, example: 42 }
+        reason: { type: string, enum: [SPAM, ABUSE, ADULT, FALSE_INFO, ETC] }
+        detail: { type: string, nullable: true }
+        status: { type: string, enum: [RECEIVED, REVIEWING, RESOLVED, REJECTED] }
+        target_report_count:
+          type: integer
+          description: 이 대상이 지금까지 받은 총 신고 수 — 제재 판단의 핵심 근거
+          example: 4
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
+    AdminRestriction:
+      allOf:
+        - $ref: '#/components/schemas/RestrictionItem'
+        - type: object
+          properties:
+            user_id: { type: integer, example: 12 }
+            nickname: { type: string, example: 인천인 }
+
+    AdminAppeal:
+      type: object
+      properties:
+        appeal_id: { type: integer, example: 3 }
+        restriction_id: { type: integer, example: 7 }
+        user_id: { type: integer, example: 12 }
+        nickname: { type: string, example: 인천인 }
+        content: { type: string }
+        status: { type: string, enum: [RECEIVED, REVIEWING, APPROVED, REJECTED] }
+        admin_comment: { type: string, nullable: true }
+        restriction_reason: { type: string, example: ABUSE }
+        restriction_status: { type: string, enum: [ACTIVE, LIFTED, EXPIRED] }
+        created_at: { type: string, format: date-time }
+        processed_at: { type: string, format: date-time, nullable: true }
+
     TeamInvitation:
       type: object
       properties:
